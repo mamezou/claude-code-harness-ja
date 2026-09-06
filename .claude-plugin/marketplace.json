@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "claude-code-harness-ja",
+  "description": "claude-code-harness-ja のセルフホスト marketplace",
+  "owner": {
+    "name": "mamezou"
+  },
+  "plugins": [
+    {
+      "name": "harness-ja",
+      "description": "日本語の応答品質ゲートとクラウド変更ゲートを hook で機械化するプラグイン",
+      "source": "./",
+      "category": "productivity"
+    }
+  ]
+}

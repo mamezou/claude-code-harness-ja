@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "principal": "依頼者",
+  "responseQuality": {
+    "enabled": true,
+    "logPath": ".claude/harness-detections.log",
+    "uiTerms": [],
+    "fluffTerms": [],
+    "bannedLeads": [],
+    "regenSkipWindowSec": 1800,
+    "regenSkipThreshold": 2
+  },
+  "changeGate": {
+    "enabled": true,
+    "projects": [
+      {
+        "name": "project-a",
+        "clis": ["az"],
+        "cwdMatch": "project-a",
+        "runbookPattern": "(docs/runbooks/.*\\.md|runbook.*\\.md)",
+        "runbookHint": "docs/runbooks/*.md",
+        "guideRef": "project-a/CLAUDE.md「変更作業のゲート」"
+      },
+      {
+        "name": "project-b",
+        "clis": ["aws", "cdk"],
+        "cwdMatch": "project-b",
+        "runbookPattern": "(project-b/docs/runbooks/.*\\.md|runbook.*\\.md)",
+        "runbookHint": "project-b/docs/runbooks/ 配下の .md",
+        "guideRef": "project-b/CLAUDE.md「変更作業のゲート」"
+      }
+    ]
+  },
+  "draftPrecheck": {
+    "enabled": true,
+    "targets": [
+      "*/docs/drafts/*-draft.md",
+      "*/docs/drafts/*-draft.txt",
+      "*/docs/notion/*.md"
+    ],
+    "excludePatterns": ["-internal-", "_internal", "/archive/"],
+    "bannedTerms": [],
+    "honorific": {
+      "name": "",
+      "suffix": "様"
+    }
+  },
+  "requireReading": {
+    "enabled": true,
+    "rules": [
+      {
+        "target": "*/project-a/TODO.md",
+        "requiredReadPattern": "(^|/)project-a/TODO\\.md$",
+        "hint": "TODO.md"
+      },
+      {
+        "target": "*/project-a/docs/runbooks/*.md",
+        "requiredReadPattern": "(^|/)project-a/docs/runbooks/.*\\.md$",
+        "hint": "docs/runbooks/"
+      },
+      {
+        "target": "*/project-a/docs/logs/*.md",
+        "mode": "logs",
+        "requiredReadPattern": "(^|/)project-a/docs/logs/.*\\.md$",
+        "hint": "docs/logs/"
+      }
+    ]
+  },
+  "noInlinePowershell": {
+    "enabled": true,
+    "scriptDirHint": "scripts/{category}/*.ps1"
+  }
+}
