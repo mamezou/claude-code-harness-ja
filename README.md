@@ -95,6 +95,16 @@ hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探�
 プラグインは `.claude/rules/` 相当の常時ロード指示を配布できないため、`rules-templates/` を
 `/harness-init` で利用側へ複製します。複製後は利用側で自由に編集してください。
 
+文章の規則のうち、次の3つは grep や hook で検知できないため、`draft-precheck` Skill の
+工程で読み取り専用のレビューエージェントに主語と述語の抜き出しを委任して確かめます。
+
+- 文は主語と述語だけを抜き出して読み、対応しない文を直す
+- 短くするときは文を分ける。主語・目的語を削って短くしない
+- 段落は「読み手がこの段落を読んで次に何をするか」で組む
+
+実際に直した文の凡例は [`examples/sentence-fixes.md`](examples/sentence-fixes.md)
+(変更前 → 変更後 → 該当する規則)。
+
 ## 週次レビュー `/harness-review`
 
 `skills/harness-review/summarize.sh` が検知ログを集計し、Markdown で出します。
