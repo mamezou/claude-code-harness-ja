@@ -7,8 +7,14 @@
     "uiTerms": [],
     "fluffTerms": [],
     "bannedLeads": [],
+    "regenLimitPerInput": 3,
     "regenSkipWindowSec": 1800,
     "regenSkipThreshold": 2
+  },
+  "harnessGate": {
+    "enabled": true,
+    "token": "[harness-go]",
+    "excludePatterns": [".claude/projects/"]
   },
   "changeGate": {
     "enabled": true,

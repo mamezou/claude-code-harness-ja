@@ -67,6 +67,29 @@ harness_principal() {
   cfg '.principal' '依頼者'
 }
 
+# transcript の末尾から、依頼者の最後のテキスト入力を {uuid, text} の 1 行 JSON で返す
+# harness_last_user_entry <transcript> [末尾行数 (既定 2000)]
+# 除外するもの:
+#   - ツール結果の行 (content 配列に tool_result を含む)
+#   - isMeta の行 (hook のフィードバック等、依頼者が書いていない user 行)
+#   - ローカルコマンドの記録 (<command-name> / <local-command-stdout> / <local-command-caveat>)
+# uuid は「同じ入力への差し戻し回数」の集計キーに使う。取れなければ空文字。
+harness_last_user_entry() {
+  local transcript="$1" tail_lines="${2:-2000}"
+  [[ -f "$transcript" ]] || return 0
+  tail -n "$tail_lines" "$transcript" | jq -cR -n '
+    [inputs | fromjson? // empty
+     | select(.type=="user" and ((.isMeta // false) | not))
+     | select((.message.content|type)=="string"
+              or ((.message.content|type)=="array"
+                  and ([.message.content[]? | select(.type=="tool_result")] | length)==0))
+     | {uuid: (.uuid // ""),
+        text: (if (.message.content|type)=="string" then .message.content
+               else ([.message.content[]? | select(.type=="text") | .text] | join("\n")) end)}
+     | select(.text | test("^\\s*<(command-name|local-command-stdout|local-command-caveat)") | not)]
+    | last // empty' 2>/dev/null || true
+}
+
 # transcript 全体から、ツール結果を含まない最後のユーザー入力テキストを取り出す
 harness_last_user_text() {
   local transcript="$1" msg

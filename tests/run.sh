@@ -1,6 +1,6 @@
 #!/bin/bash
 # harness-ja の hook 合成テスト。
-# 一時ディレクトリへ合成 transcript / hook 入力 / 設定ファイルを作り、5 本の hook を
+# 一時ディレクトリへ合成 transcript / hook 入力 / 設定ファイルを作り、6 本の hook を
 # 期待値つきで実行する。末尾に PASS / FAIL 件数を出し、FAIL が 1 件でもあれば exit 1。
 #
 # 使い方: bash tests/run.sh   (リポジトリ内のどのディレクトリからでも実行できる)
@@ -19,7 +19,8 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "jq が見つかりません。jq を入れてから再実行してください。" >&2
   exit 1
 fi
-for f in change-gate.sh draft-precheck.sh no-inline-powershell.sh require-reading.sh response-quality.sh; do
+for f in change-gate.sh draft-precheck.sh harness-change-gate.sh no-inline-powershell.sh \
+         require-reading.sh response-quality.sh; do
   if [[ ! -f "$H/$f" ]]; then
     echo "hook が見つかりません: $H/$f" >&2
     exit 1
@@ -39,11 +40,15 @@ trap 'rm -rf "$W"' EXIT
 PROJ="$W/proj"
 NOCONF="$W/noconf"
 REGEN="$W/regen"
+SKIP="$W/skip"
+XSESS="$W/xsess"
+OLDFMT="$W/oldfmt"
 CPD="$W/cpd"
 TR="$W/tr"
 IN="$W/in"
 mkdir -p "$PROJ/.claude" "$PROJ/docs/drafts" "$PROJ/docs/logs" \
-         "$NOCONF" "$REGEN/.claude" "$CPD" "$TR" "$IN"
+         "$NOCONF" "$REGEN/.claude" "$SKIP/.claude" "$XSESS/.claude" "$OLDFMT/.claude" \
+         "$CPD" "$TR" "$IN"
 
 CFG="$PROJ/.claude/harness.json"
 NOCFG="$NOCONF/none.json"                       # 存在しないパス
@@ -51,6 +56,9 @@ LOG="$PROJ/.claude/harness-detections.log"
 NOCONF_LOG="$NOCONF/.claude/harness-detections.log"
 CPD_LOG="$CPD/.claude/harness-detections.log"
 REGEN_LOG="$REGEN/.claude/harness-detections.log"
+SKIP_LOG="$SKIP/.claude/harness-detections.log"
+XSESS_LOG="$XSESS/.claude/harness-detections.log"
+OLDFMT_LOG="$OLDFMT/.claude/harness-detections.log"
 WORKLOG="$PROJ/docs/logs/work-log-YYYYMMDD.md"
 
 # ---------------------------------------------------------------------------
@@ -66,8 +74,14 @@ cat > "$CFG" <<'JSON'
     "uiTerms": [],
     "fluffTerms": [],
     "bannedLeads": [],
+    "regenLimitPerInput": 3,
     "regenSkipWindowSec": 1800,
     "regenSkipThreshold": 2
+  },
+  "harnessGate": {
+    "enabled": true,
+    "token": "[harness-go]",
+    "excludePatterns": [".claude/projects/"]
   },
   "changeGate": {
     "enabled": true,
@@ -119,23 +133,51 @@ cat > "$CFG" <<'JSON'
 }
 JSON
 
-cp "$CFG" "$REGEN/.claude/harness.json"
+for d in "$REGEN" "$SKIP" "$XSESS" "$OLDFMT"; do
+  cp "$CFG" "$d/.claude/harness.json"
+done
 jq '.responseQuality.enabled=false'    "$CFG" > "$PROJ/.claude/harness-off.json"
 jq '.noInlinePowershell.enabled=false' "$CFG" > "$PROJ/.claude/harness-psoff.json"
+jq '.harnessGate.enabled=false'        "$CFG" > "$PROJ/.claude/harness-hgoff.json"
 touch "$PROJ/TODO.md"
 
 # ---------------------------------------------------------------------------
 # 合成 transcript
 # ---------------------------------------------------------------------------
 mk_user()    { jq -cn --arg t "$1" '{type:"user",message:{role:"user",content:$t}}'; }
+mk_user_id() { jq -cn --arg t "$1" --arg u "$2" '{type:"user",uuid:$u,message:{role:"user",content:$t}}'; }
 mk_asst()    { jq -cn --arg t "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"text",text:$t}]}}'; }
 mk_read()    { jq -cn --arg p "$1" '{type:"assistant",message:{role:"assistant",content:[{type:"tool_use",name:"Read",input:{file_path:$p}}]}}'; }
 mk_toolres() { jq -cn '{type:"user",message:{role:"user",content:[{type:"tool_result",tool_use_id:"t1",content:"ok"}]}}'; }
+# キーの後ろに空白のある JSON (jq -c では作れないため直接組み立てる)
+mk_user_spaced() { printf '{"type": "user", "uuid": "%s", "message": {"role": "user", "content": "%s"}}\n' "$2" "$1"; }
 
 # response-quality 用
 { mk_user "状況を教えて";                                 mk_asst "設定は効きます。"; }                  > "$TR/rq-block.jsonl"
 { mk_user "状況を教えて";                                 mk_asst "アラート設定を更新した。件数は12件。"; } > "$TR/rq-pass.jsonl"
 { mk_user "状況を教えて [hook-bypass: response-quality]"; mk_asst "設定は効きます。"; }                  > "$TR/rq-bypass.jsonl"
+
+# response-quality: 差し戻し回数の集計用 (uuid つき)
+{ mk_user_id "状況を教えて" "u-1"; mk_asst "設定は効きます。"; } > "$TR/rq-uuid1.jsonl"
+{ mk_user_id "状況を教えて" "u-c"; mk_asst "設定は効きます。"; } > "$TR/rq-uuidc.jsonl"
+
+# response-quality: 空白入り JSON の user 行を区切りとして認識できるか
+# 区切りより前の応答に検知語を置き、区切りより後ろの応答は検知語なしにする
+{ mk_asst "設定は効きます。"
+  mk_user_spaced "状況を教えて" "u-sp"
+  mk_asst "アラート設定を更新した。件数は12件。"; } > "$TR/rq-spaced.jsonl"
+
+# response-quality: パターン 19 (確認質問への根拠なしの否定断定)
+{ mk_user "この設計書、あってる?"; mk_asst "ご指摘の設計書はありません。TODO の1行に記載がありました。"; } \
+  > "$TR/rq-p19-doc.jsonl"
+{ mk_user "この設計書、あってる?"; mk_asst "ご指摘の設計書はありません。目次を開いて確かめました。"; } \
+  > "$TR/rq-p19-docok.jsonl"
+{ mk_user "認識はあってる?";      mk_asst "認識にズレがあります。"; }                        > "$TR/rq-p19-dis.jsonl"
+{ mk_user "認識はあってる?";      mk_asst "認識にズレがあります。出典は設計書の3章です。"; } > "$TR/rq-p19-disok.jsonl"
+
+# harness-change-gate 用 (ツール結果行を挟む)
+{ mk_user "hook を直して";              mk_toolres; } > "$TR/hg-nogo.jsonl"
+{ mk_user "hook を直して [harness-go]"; mk_toolres; } > "$TR/hg-go.jsonl"
 
 # change-gate 用 (ツール結果行を挟む)
 { mk_user "リソースグループを作って";                        mk_toolres; }                          > "$TR/cg-nogo.jsonl"
@@ -153,9 +195,10 @@ ps_text=$(printf '確認スクリプトです。\n```powershell\n$a = 1\n$b = 2\
 # ---------------------------------------------------------------------------
 # hook 入力 JSON
 # ---------------------------------------------------------------------------
-stop_input() { # stop_input <transcript> <cwd> <stop_hook_active>
-  jq -cn --arg tr "$1" --arg cwd "$2" --argjson active "$3" \
-    '{stop_hook_active:$active,transcript_path:$tr,cwd:$cwd}'
+stop_input() { # stop_input <transcript> <cwd> <stop_hook_active> [session_id]
+  jq -cn --arg tr "$1" --arg cwd "$2" --argjson active "$3" --arg sid "${4:-}" \
+    '{stop_hook_active:$active,transcript_path:$tr,cwd:$cwd}
+     + (if $sid == "" then {} else {session_id:$sid} end)'
 }
 bash_input() { # bash_input <transcript> <cwd> <command>
   jq -cn --arg tr "$1" --arg cwd "$2" --arg c "$3" \
@@ -176,7 +219,27 @@ stop_input "$TR/rq-pass.jsonl"   "$PROJ"   false > "$IN/rq-pass.json"
 stop_input "$TR/rq-bypass.jsonl" "$PROJ"   false > "$IN/rq-bypass.json"
 stop_input "$TR/rq-block.jsonl"  "$PROJ"   true  > "$IN/rq-active.json"
 stop_input "$TR/rq-block.jsonl"  "$NOCONF" false > "$IN/rq-noconf.json"
-stop_input "$TR/rq-block.jsonl"  "$REGEN"  false > "$IN/rq-regen.json"
+stop_input "$TR/rq-spaced.jsonl" "$PROJ"   false > "$IN/rq-spaced.json"
+
+# 差し戻し回数の集計 (session_id と user 行の uuid でまとめる)
+stop_input "$TR/rq-uuid1.jsonl" "$REGEN"  false "s-regen" > "$IN/rq-regen1.json"
+stop_input "$TR/rq-uuid1.jsonl" "$REGEN"  true  "s-regen" > "$IN/rq-regen2.json"
+stop_input "$TR/rq-uuidc.jsonl" "$SKIP"   false "s-skip"  > "$IN/rq-skip.json"
+stop_input "$TR/rq-uuid1.jsonl" "$XSESS"  false "s-mine"  > "$IN/rq-xsess.json"
+stop_input "$TR/rq-uuid1.jsonl" "$OLDFMT" false "s-old"   > "$IN/rq-oldfmt.json"
+
+# パターン 19
+stop_input "$TR/rq-p19-doc.jsonl"   "$PROJ" false > "$IN/rq-p19-doc.json"
+stop_input "$TR/rq-p19-docok.jsonl" "$PROJ" false > "$IN/rq-p19-docok.json"
+stop_input "$TR/rq-p19-dis.jsonl"   "$PROJ" false > "$IN/rq-p19-dis.json"
+stop_input "$TR/rq-p19-disok.jsonl" "$PROJ" false > "$IN/rq-p19-disok.json"
+
+# harness-change-gate
+write_input "$TR/hg-nogo.jsonl" "$PROJ" "$PROJ/.claude/rules/x.md"            "本文"   > "$IN/hg-write.json"
+write_input "$TR/hg-go.jsonl"   "$PROJ" "$PROJ/.claude/rules/x.md"            "本文"   > "$IN/hg-go.json"
+write_input "$TR/hg-nogo.jsonl" "$PROJ" "$PROJ/.claude/projects/p/state.json" "{}"     > "$IN/hg-proj.json"
+bash_input  "$TR/hg-nogo.jsonl" "$PROJ" "echo x > $PROJ/.claude/settings.json"         > "$IN/hg-bash.json"
+bash_input  "$TR/hg-nogo.jsonl" "$PROJ" "cp $PROJ/.claude/hooks/x.sh /tmp/"            > "$IN/hg-read.json"
 
 # change-gate
 cg_change="az group create --name rg-test --location japaneast"
@@ -266,10 +329,13 @@ else
   printf '%-52s %s\n' "RQ-1b 検知ログが UTF-8 として decode 可能" "SKIP (python3 なし)"
 fi
 
+check "RQ-1c 検知ログに session / input のタグ" 1 "$(grep -c '\[session:.*\] \[input:.*\]' "$LOG" 2>/dev/null || echo 0)"
+
 run "RQ-2 検知語なし -> pass" 0 response-quality.sh "$CFG" "$IN/rq-pass.json"
 run "RQ-3 bypass トークン -> pass" 0 response-quality.sh "$CFG" "$IN/rq-bypass.json"
 check "RQ-3a 検知ログは RQ-2/3 で増えない" 1 "$(grep -c . "$LOG")"
-run "RQ-4 stop_hook_active=true -> pass" 0 response-quality.sh "$CFG" "$IN/rq-active.json"
+run "RQ-4 再生成で uuid が取れない -> pass" 0 response-quality.sh "$CFG" "$IN/rq-active.json"
+run "RQ-4a 空白入り JSON の user 行を区切りに使う -> pass" 0 response-quality.sh "$CFG" "$IN/rq-spaced.json"
 
 # 設定ファイル無し (cwd 配下にも無い) -> 既定値で block
 rm -f "$NOCONF_LOG"
@@ -283,18 +349,56 @@ check "RQ-5b CLAUDE_PROJECT_DIR が logPath の基点" yes "$(exists "$CPD_LOG")
 
 run "RQ-6 enabled:false -> pass" 0 response-quality.sh "$PROJ/.claude/harness-off.json" "$IN/rq-block.json"
 
-# regen-skip (窓 1800 秒 / 閾値 2): 3 回目は差し戻さず [regen-skip] を記録して通過
+# 同じ入力への差し戻しの上限 (regenLimitPerInput=3)
+#   初回 + 再生成 2 回まで差し戻し、3 件に達した次の再生成は [regen-limit] で通過する
 rm -f "$REGEN_LOG"
-regen_rc=()
-for i in 1 2 3; do
-  env -u CLAUDE_PROJECT_DIR HARNESS_CONFIG="$REGEN/.claude/harness.json" \
-    bash "$H/response-quality.sh" < "$IN/rq-regen.json" >/dev/null 2>&1
-  regen_rc+=("$?")
-done
-check "RQ-7 regen-skip 連続実行 1 回目 -> block" 2 "${regen_rc[0]}"
-check "RQ-8 regen-skip 連続実行 2 回目 -> block" 2 "${regen_rc[1]}"
-check "RQ-9 regen-skip 連続実行 3 回目 -> pass"  0 "${regen_rc[2]}"
-check "RQ-10 [regen-skip] の行数" 1 "$(grep -c 'regen-skip' "$REGEN_LOG" 2>/dev/null || echo 0)"
+rq_run() { # rq_run <設定> <入力> -> 終了コードを出す
+  env -u CLAUDE_PROJECT_DIR HARNESS_CONFIG="$1" bash "$H/response-quality.sh" < "$2" >/dev/null 2>&1
+  echo $?
+}
+REGEN_CFG="$REGEN/.claude/harness.json"
+check "RQ-7 初回 -> block"                       2 "$(rq_run "$REGEN_CFG" "$IN/rq-regen1.json")"
+check "RQ-8 再生成 1 回目 -> block"              2 "$(rq_run "$REGEN_CFG" "$IN/rq-regen2.json")"
+check "RQ-9 再生成 2 回目 -> block"              2 "$(rq_run "$REGEN_CFG" "$IN/rq-regen2.json")"
+check "RQ-10 再生成 3 回目 (上限到達) -> pass"   0 "$(rq_run "$REGEN_CFG" "$IN/rq-regen2.json")"
+check "RQ-11 [regen-limit] の行数"               1 "$(grep -c 'regen-limit' "$REGEN_LOG" 2>/dev/null || echo 0)"
+
+# 再生成ループ防止 (窓 1800 秒 / 閾値 2): 同一セッションで今回以外の入力 2 件が差し戻し済み
+now_ts=$(date +%Y-%m-%dT%H:%M:%S%z)
+{
+  printf '%s\t[session:s-skip] [input:u-a] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t[session:s-skip] [input:u-b] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+} > "$SKIP_LOG"
+check "RQ-12 同一セッションの他入力 2 件 -> [regen-skip] で pass" \
+  0 "$(rq_run "$SKIP/.claude/harness.json" "$IN/rq-skip.json")"
+check "RQ-13 [regen-skip] の行数" 1 "$(grep -c 'regen-skip' "$SKIP_LOG" 2>/dev/null || echo 0)"
+
+# 別セッションの差し戻しは本セッションの集計に入れない
+{
+  printf '%s\t[session:s-other] [input:u-1] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t[session:s-other] [input:u-1] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t[session:s-other] [input:u-1] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t[session:s-other] [input:u-a] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t[session:s-other] [input:u-b] 装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+} > "$XSESS_LOG"
+check "RQ-14 別セッションの差し戻しは数えない -> block" \
+  2 "$(rq_run "$XSESS/.claude/harness.json" "$IN/rq-xsess.json")"
+
+# タグの無い旧形式の行は集計に入れない
+{
+  printf '%s\t装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+  printf '%s\t装飾語・抽象語で文を締めた: [効きます]\n' "$now_ts"
+} > "$OLDFMT_LOG"
+check "RQ-15 旧形式の行は数えない -> block" \
+  2 "$(rq_run "$OLDFMT/.claude/harness.json" "$IN/rq-oldfmt.json")"
+
+# パターン 19: 確認質問への根拠なしの否定断定
+run "RQ-16 資料本文を引かずに不在を断定 -> block" 2 response-quality.sh "$CFG" "$IN/rq-p19-doc.json" "資料の不在を断定"
+run "RQ-17 資料の見出し・目次を引いた -> pass"     0 response-quality.sh "$CFG" "$IN/rq-p19-docok.json"
+run "RQ-18 出典を引かずに認識を否定 -> block"     2 response-quality.sh "$CFG" "$IN/rq-p19-dis.json" "認識を否定"
+run "RQ-19 出典を引いた -> pass"                   0 response-quality.sh "$CFG" "$IN/rq-p19-disok.json"
 
 echo
 echo "== change-gate =="
@@ -306,6 +410,15 @@ run "CG-5 examples 設定 + cwd project-a -> block" 2 change-gate.sh "$EX" "$IN/
 run "CG-6 examples 設定 + cdk deploy (project-b) -> block" 2 change-gate.sh "$EX" "$IN/cg-cdk.json" "[change-go: project-b]"
 run "CG-7 どの案件にも一致しない変更系 -> pass" 0 change-gate.sh "$EX" "$IN/cg-nomatch.json"
 run "CG-8 ローカル CLI 設定 -> pass (除外)" 0 change-gate.sh "$CFG" "$IN/cg-acct.json"
+
+echo
+echo "== harness-change-gate =="
+run "HG-1 .claude/rules/ を Write (GO なし) -> block" 2 harness-change-gate.sh "$CFG" "$IN/hg-write.json" "[harness-go]"
+run "HG-2 Bash のリダイレクト先が .claude/ -> block" 2 harness-change-gate.sh "$CFG" "$IN/hg-bash.json" "[harness-go]"
+run "HG-3 .claude/ からのコピー (読み取り) -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-read.json"
+run "HG-4 GO トークンあり -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-go.json"
+run "HG-5 除外パス (.claude/projects/) -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-proj.json"
+run "HG-6 enabled:false -> pass" 0 harness-change-gate.sh "$PROJ/.claude/harness-hgoff.json" "$IN/hg-write.json"
 
 echo
 echo "== draft-precheck =="

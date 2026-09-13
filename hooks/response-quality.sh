@@ -59,19 +59,34 @@
 #  18  禁止前置き・充足判断・文案評価断定
 #      「こうです」「以下のように」「十分です」「この粒度でよい」等の辞書語を検出
 #      根拠: 前置きで始めない。充足を自己判定しない。自分の文案を自分で評価しない
+#  19  確認質問への根拠なしの否定断定
+#      依頼者の入力が確認形 (あってる / よね / ですか / 〜とは 等) で、応答に
+#      (a) 資料の不在の断定 (「という資料はありません」等) があるのに資料本文の引用
+#          (N章 / 見出し / 目次 / 冒頭) がない、または
+#      (b) 依頼者の認識を否定する語 (ズレ / 食い違い / 認識が違う 等) があるのに
+#          出典の引用 (出典 / N行 / N章 / 見出し) がない
+#      根拠: 正本の食い違いは片方に倒さない。両方の出典を引用して未決として示す
+#            (rules「start-approval」着手前)
 #
 # 設定 (.claude/harness.json):
-#   responseQuality.enabled            false で無効化
-#   responseQuality.logPath            検知ログの置き場 (既定 .claude/harness-detections.log)
-#   responseQuality.uiTerms[]          パターン 2 の辞書へ追加
-#   responseQuality.fluffTerms[]       パターン 5 の辞書へ追加
-#   responseQuality.bannedLeads[]      パターン 18 の辞書へ追加
-#   responseQuality.regenSkipWindowSec 再生成ループ防止の窓 (秒。既定 1800)
-#   responseQuality.regenSkipThreshold 窓内の差し戻し件数の閾値 (既定 2)
+#   responseQuality.enabled             false で無効化
+#   responseQuality.logPath             検知ログの置き場 (既定 .claude/harness-detections.log)
+#   responseQuality.uiTerms[]           パターン 2 の辞書へ追加
+#   responseQuality.fluffTerms[]        パターン 5 の辞書へ追加
+#   responseQuality.bannedLeads[]       パターン 18 の辞書へ追加
+#   responseQuality.regenLimitPerInput  同じ入力への差し戻しの上限回数 (既定 3)
+#   responseQuality.regenSkipWindowSec  再生成ループ防止の窓 (秒。既定 1800)
+#   responseQuality.regenSkipThreshold  窓内で差し戻された他の入力の数の閾値 (既定 2)
 #
 # バイパス:
-#   - hook input の stop_hook_active=true なら exit 0 (無限ループ防止)
-#   - 直前のユーザーメッセージに [hook-bypass: response-quality] があれば exit 0
+#   - 最後の依頼者のテキスト入力に [hook-bypass: response-quality] があれば exit 0
+#
+# 再生成の扱い:
+#   - 差し戻し後の再生成 (stop_hook_active=true) も検査する。無条件に通すと、差し戻し
+#     直後に体裁だけ直した再送が検査されない
+#   - 同じ依頼者入力への差し戻しは regenLimitPerInput 回まで。上限に達した生成は
+#     [regen-limit] 付きで記録して通す (無限ループ防止を兼ねる)
+#   - 検知ログの集計はセッション単位。行に [session:<id>] [input:<uuid>] のタグを付ける
 
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
@@ -85,16 +100,19 @@ fi
 
 principal=$(harness_principal)
 
-# 1) 無限ループ防止
+# 1) 再生成フラグとセッション ID
+#    stop_hook_active=true は差し戻し後の再生成。検査は行い、差し戻し回数の上限は 14) で見る。
+#    session_id は検知ログの集計単位 (取れなければ transcript のファイル名で代用)。
 stop_hook_active=$(printf '%s' "$input" | jq -r '.stop_hook_active // false')
-if [[ "$stop_hook_active" == "true" ]]; then
-  exit 0
-fi
+session_id=$(printf '%s' "$input" | jq -r '.session_id // empty')
 
 # 2) transcript 取得
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty')
 if [[ -z "$transcript" || ! -f "$transcript" ]]; then
   exit 0
+fi
+if [[ -z "$session_id" ]]; then
+  session_id=$(basename "$transcript" .jsonl)
 fi
 
 # 3) 直近のユーザー入力より後ろにある assistant text を全部連結して取得
@@ -104,15 +122,21 @@ fi
 #    user 行を使う。
 #    Stop 発火時に最終 assistant text 行が transcript へまだ書き込まれておらず、text が
 #    空のまま素通りする競合があるため、空の間は 0.2 秒待って再読込する (最大 10 回 = 2 秒)。
+#    行の判定は jq で行う。grep の文字列一致 ('"type":"user"') では、空白入りの JSON
+#    ('"type": "user"') を user 行と認識できず検査が空振りする。
+#    差し戻し後の再生成では hook のフィードバック行 (isMeta) が区切りになり、再生成した
+#    本文だけが検査対象になる。対象は末尾 scan_tail 行。JSON として読めない行は読み飛ばす。
+scan_tail=5000
 get_scan_text() {
-  local start_line scan_body
-  start_line=$(grep -n '"type":"user"' "$transcript" | grep -v '"tool_result"' | tail -1 | cut -d: -f1 || true)
-  if [[ -n "$start_line" ]]; then
-    scan_body=$(tail -n "+$((start_line + 1))" "$transcript")
-  else
-    scan_body=$(cat "$transcript")
-  fi
-  printf '%s\n' "$scan_body" | jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' 2>/dev/null || true
+  tail -n "$scan_tail" "$transcript" | jq -rR -n '
+    [inputs | fromjson? // empty] as $all
+    | ($all | map(.type=="user"
+        and ((.message.content|type)=="string"
+             or ((.message.content|type)=="array"
+                 and ([.message.content[]? | select(.type=="tool_result")] | length)==0)))
+       | rindex(true)) as $i
+    | $all[(($i // -1)+1):][]
+    | select(.type=="assistant") | .message.content[]? | select(.type=="text") | .text' 2>/dev/null || true
 }
 
 text=$(get_scan_text)
@@ -125,9 +149,18 @@ if [[ -z "$text" ]]; then
   exit 0
 fi
 
-# 4) バイパストークン (直前ユーザーメッセージ。ツール結果行は除外する)
-user_text=$(harness_last_user_text "$transcript")
+# 4) 最後の依頼者のテキスト入力 (バイパストークンとパターン 9 / 13 / 14 / 19 の判定に使う)
+#    ツール結果行・isMeta 行 (hook のフィードバック等)・ローカルコマンドの記録は除外する。
+#    除外しないと、差し戻し後は hook のフィードバック文が依頼者の入力として扱われる。
+#    uuid は「同じ入力への差し戻し回数」の集計キー (14 を参照)。
+last_user_json=$(harness_last_user_entry "$transcript" "$scan_tail")
+user_uuid=$(printf '%s' "$last_user_json" | jq -r '.uuid // empty' 2>/dev/null || true)
+user_text=$(printf '%s' "$last_user_json" | jq -r '.text // empty' 2>/dev/null || true)
 if [[ -n "$user_text" ]] && printf '%s' "$user_text" | grep -qF '[hook-bypass: response-quality]'; then
+  exit 0
+fi
+# 再生成なのに集計キーが取れない場合は、無限ループ防止を優先して通す
+if [[ "$stop_hook_active" == "true" && -z "$user_uuid" ]]; then
   exit 0
 fi
 
@@ -417,6 +450,30 @@ if [[ -n "$paren_bad" ]]; then
   violations+=("括弧の中に述語がある: [$joined] (Output Style「Concise JA」。括弧を外して本文へ出すか、名詞への短い限定に直す)")
 fi
 
+# 10-N) パターン 19: 確認質問への根拠なしの否定断定
+# 確認質問に、資料を開かないまま「ありません」「認識がズレています」と答える型を止める。
+#   (a) 資料の不在の断定は、資料本文を開いた痕跡 (N章 / 見出し / 目次 / 冒頭 / 節) を要求する。
+#       TODO・作業ログの行番号引用では通さない (要約文は資料の内容の根拠にならない)。
+#   (b) 依頼者の認識の否定は、出典の引用 (出典 / N行 / N章 / 見出し / パス:行) を要求する。
+# 限界: 引用した出典が適切かは判定できない。意味レベルの判定は rules「start-approval」で扱う。
+confirm_re='あってる|あってます|合ってる|合ってます|よね|ですか|でしょうか|ますか|[??]|正しい|間違って|とは[。]?$|とは[。]?[[:space:]]'
+doc_negate_re='という(資料|ファイル|手順書|設計書|文書|ページ)は(ありません|ない|存在しません|存在しない)|(資料|ファイル|手順書|設計書|文書|ページ)は(ありません|存在しません|存在しない)|(資料|ファイル|手順書|設計書|文書|ページ)の不在'
+doc_evidence_re='[0-9０-９]+章|見出し|目次|冒頭|本文[0-9０-９]*章|本文の|節に|[0-9０-９]+\.[0-9０-９]+節?'
+disagree_re='ズレ|食い違|認識が違|認識と違|誤りです|間違いです|正しくありません|合っていません|そうではありません'
+cite_re='出典|[0-9０-９]+行|[0-9０-９]+章|見出し|\.(md|txt|json|sh):[0-9]+'
+if [[ -n "${user_text:-}" ]] && printf '%s' "$user_text" | grep -qE "$confirm_re"; then
+  neg_hits=$(printf '%s' "$filtered_text" | grep -oE "$doc_negate_re" || true)
+  if [[ -n "$neg_hits" ]] && ! printf '%s' "$prose_text" | grep -qE "$doc_evidence_re"; then
+    joined=$(printf '%s\n' "$neg_hits" | sort -u | head -2 | tr '\n' ',' | sed 's/,$//')
+    violations+=("資料本文を引かずに資料の不在を断定: [$joined] (rules「start-approval」着手前。資料の見出し・章を開いてから書く。TODO・作業ログの要約は根拠にしない)")
+  fi
+  dis_hits=$(printf '%s' "$filtered_text" | grep -oE "$disagree_re" || true)
+  if [[ -n "$dis_hits" ]] && ! printf '%s' "$prose_text" | grep -qE "$cite_re"; then
+    joined=$(printf '%s\n' "$dis_hits" | sort -u | head -2 | tr '\n' ',' | sed 's/,$//')
+    violations+=("出典を引かずに${principal}の認識を否定: [$joined] (rules「start-approval」着手前。両方の出典を引用して提示する。記録と発言が食い違えば既定は記録が古い)")
+  fi
+fi
+
 # 11) パターン 18: 禁止前置き・充足判断フレーズ
 # 説明文・文面案の前置きとして再発しやすい定型句を Stop hook で止める。
 declare -a banned_leads=(
@@ -502,28 +559,50 @@ fi
 log_dir=$(dirname "$detect_log")
 [[ -d "$log_dir" ]] || mkdir -p "$log_dir" 2>/dev/null || true
 
-# 14) 再生成ループ防止
-#   直近の窓内の差し戻しが閾値以上なら、今回は差し戻さず通過する。
-#   体裁の差し戻しの反復は、体裁を通す書き換えで読みやすさを下げるため。
-#   通過は [regen-skip] 付きで検知ログへ記録する。[regen-skip] 行は差し戻し件数に数えない。
+# 14) 差し戻し回数の上限と再生成ループ防止 (検知ログを参照する)
+#   記録形式: <時刻>\t[session:<id>] [input:<uuid>] <検知内容>
+#             通過の記録は先頭に [regen-limit] または [regen-skip] を付け、件数に数えない。
+#             記録の失敗でブロック自体を落とさないため、エラーは無視する。
+#   (1) 同じ入力への上限:
+#       同一セッション・同一 uuid への差し戻しが regenLimitPerInput 件に達していたら、
+#       今回は [regen-limit] 付きで記録して通過する。再生成の無限ループ防止を兼ねる。
+#   (2) 再生成ループ防止:
+#       窓 (regenSkipWindowSec) 内に、同一セッションで今回以外の入力が閾値
+#       (regenSkipThreshold) 件以上差し戻されていたら [regen-skip] 付きで記録して通過する。
+#       体裁の差し戻しの反復は、体裁を通す書き換えで読みやすさを下げるため。
+#       件数は差し戻された入力の数で数える (同じ入力の再差し戻しは (1) で扱う)。
+#   タグの無い旧形式の行は、どちらの集計にも入らない。
+regen_limit=$(cfg '.responseQuality.regenLimitPerInput' '3')
 regen_window=$(cfg '.responseQuality.regenSkipWindowSec' '1800')
 regen_threshold=$(cfg '.responseQuality.regenSkipThreshold' '2')
-now_epoch=$(date +%s)
-recent_blocks=0
-if [[ -f "$detect_log" ]]; then
-  while IFS= read -r ts; do
-    [[ -z "$ts" ]] && continue
-    ts_epoch=$(date -d "$ts" +%s 2>/dev/null || echo 0)
-    if (( now_epoch - ts_epoch <= regen_window )); then
-      recent_blocks=$((recent_blocks + 1))
-    fi
-  done < <(grep -av '\[regen-skip\]' "$detect_log" | cut -f1 | tail -5)
-  if (( recent_blocks >= regen_threshold )); then
-    {
-      printf '%s\t[regen-skip] ' "$(date +%Y-%m-%dT%H:%M:%S%z)"
-      printf '%s' "$(IFS='|'; echo "${violations[*]}")" | tr -d '\n' | LC_ALL=C.UTF-8 grep -oE '^.{1,300}' | tr -d '\n'
-      printf '\n'
-    } >> "$detect_log" 2>/dev/null || true
+tag_session="[session:${session_id}]"
+tag_input="[input:${user_uuid}]"
+log_detection() { # log_detection <先頭に付けるタグ (無ければ空文字)>
+  {
+    printf '%s\t%s%s %s ' "$(date +%Y-%m-%dT%H:%M:%S%z)" "$1" "$tag_session" "$tag_input"
+    printf '%s' "$(IFS='|'; echo "${violations[*]}")" | tr -d '\n' | LC_ALL=C.UTF-8 grep -oE '^.{1,300}' | tr -d '\n'
+    printf '\n'
+  } >> "$detect_log" 2>/dev/null || true
+}
+if [[ -f "$detect_log" && -n "$user_uuid" ]]; then
+  # grep が 0 件のとき pipefail で代入が失敗し set -e で落ちるため、末尾に || true を置く
+  same_input_blocks=$(grep -aF -- "$tag_session" "$detect_log" | grep -aF -- "$tag_input" \
+    | grep -avE '\[regen-(skip|limit)\]' | wc -l || true)
+  if (( same_input_blocks >= regen_limit )); then
+    log_detection "[regen-limit] "
+    exit 0
+  fi
+  now_epoch=$(date +%s)
+  recent_inputs=$(grep -aF -- "$tag_session" "$detect_log" | grep -avE '\[regen-(skip|limit)\]' \
+    | grep -avF -- "$tag_input" | tail -50 \
+    | while IFS=$'\t' read -r ts rest; do
+        ts_epoch=$(date -d "$ts" +%s 2>/dev/null || echo 0)
+        if (( now_epoch - ts_epoch <= regen_window )); then
+          printf '%s\n' "$rest" | grep -oE '\[input:[^]]*\]' || true
+        fi
+      done | sort -u | wc -l || true)
+  if (( recent_inputs >= regen_threshold )); then
+    log_detection "[regen-skip] "
     exit 0
   fi
 fi
@@ -543,11 +622,7 @@ fi
 # 16) 検知の記録
 #     停止・再稼働の判断材料が「再発したか」だけになるのを避ける。
 #     どのパターンが誤検知を多く出しているかを、後から件数で見られるようにする。
-#     記録の失敗でブロック自体を落とさないため、エラーは無視する。
-{
-  printf '%s\t' "$(date +%Y-%m-%dT%H:%M:%S%z)"
-  printf '%s' "$(IFS='|'; echo "${violations[*]}")" | tr -d '\n' | LC_ALL=C.UTF-8 grep -oE '^.{1,300}' | tr -d '\n'
-  printf '\n'
-} >> "$detect_log" 2>/dev/null || true
+#     形式と置き場は 14) を参照。
+log_detection ""
 
 exit 2

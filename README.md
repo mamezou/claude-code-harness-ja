@@ -22,12 +22,12 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 | 種別 | 内容 |
 |---|---|
-| hooks(5本) | 応答品質ゲート、クラウド変更コマンドのゲート、送付文面の事前検査、資料先読みの強制、インライン PowerShell の禁止 |
+| hooks(6本) | 応答品質ゲート、クラウド変更コマンドのゲート、ハーネス変更のゲート、送付文面の事前検査、資料先読みの強制、インライン PowerShell の禁止 |
 | Output Style | `Concise JA`。簡潔な日本語応答と、依頼者への返信文体の規則 |
 | rules テンプレート(2本) | 着手と承認、文章の書き方 |
 | Skills(2本) | `harness-init`(初期設定)、`harness-review`(週次レビュー) |
 | docs テンプレート(2本) | 失敗の台帳 `lessons.md` と索引 `lessons-index.md` |
-| tests | hook 5本の合成入力テスト。`bash tests/run.sh` |
+| tests | hook 6本の合成入力テスト。`bash tests/run.sh` |
 
 ## 動作環境
 
@@ -54,8 +54,9 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 | hook | イベント | 止める条件 | バイパス |
 |---|---|---|---|
-| `response-quality.sh` | Stop | 応答本文に18種の文体違反(装飾語で締める、見出し・表・箇条書きが文で終わる、指示語の多用、逃げの締め 等) | `[hook-bypass: response-quality]` |
+| `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表・箇条書きが文で終わる、指示語の多用、逃げの締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
 | `change-gate.sh` | PreToolUse(Bash) | az / aws / cdk の変更系コマンドで、手順書の Read と `[change-go: <案件>]` のいずれかが無い | `[hook-bypass: change-gate]` |
+| `harness-change-gate.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(トークンが承認を兼ねる) |
 | `draft-precheck.sh` | PreToolUse(Write / Edit) | 送付文面に内部パス・ローカル拡張子・組版記号・外部 AI 言及・禁止語・長い識別子の繰り返し | `[hook-bypass: draft-precheck]` |
 | `require-reading.sh` | PreToolUse(Write / Edit) | 必読資料を直近で Read せずに対象ファイルを編集 | `[hook-bypass: resource-reading]` |
 | `no-inline-powershell.sh` | Stop | 5行以上の PowerShell をファイル化せずにコードブロックで提示 | なし |
@@ -63,9 +64,14 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 バイパストークンは利用者が自分のメッセージに書く運用です。Claude 側からの提案・要求は
 rules テンプレートで禁止しています。
 
-応答品質ゲートは、直近30分に2回差し戻していれば3回目以降を `[regen-skip]` 付きで通します
-(体裁の差し戻しの反復で読みやすさが下がるのを防ぐため)。検知の記録は
-`.claude/harness-detections.log` に1行1件で残り、`/harness-review` の集計元になります。
+応答品質ゲートは、差し戻し後の再生成(`stop_hook_active=true`)も検査します。同じ依頼者入力
+への差し戻しが3回に達したら、4回目の生成を `[regen-limit]` 付きで通します(無限ループ防止を
+兼ねます)。加えて、同じセッションで直近30分に別の入力を2件差し戻していれば、次の差し戻しを
+`[regen-skip]` 付きで通します(体裁の差し戻しの反復で読みやすさが下がるのを防ぐため)。
+
+検知の記録は `.claude/harness-detections.log` に1行1件で残り、`/harness-review` の集計元に
+なります。行の形式は `<時刻>\t[session:<ID>] [input:<UUID>] <検知内容>` で、上の2つの集計は
+セッションと入力の単位で数えます。タグの無い旧形式の行は集計に入りません。
 
 ## 設定ファイル `.claude/harness.json`
 
@@ -76,15 +82,17 @@ rules テンプレートで禁止しています。
 | `principal` | 承認者の呼び名。hook の通知文に使う(既定「依頼者」) |
 | `responseQuality.uiTerms` / `fluffTerms` / `bannedLeads` | 検知語の追加。既定の辞書に加算 |
 | `responseQuality.logPath` | 検知ログの置き場(プロジェクトルートからの相対パス) |
-| `responseQuality.regenSkipWindowSec` / `regenSkipThreshold` | 再生成ループ防止の窓と閾値 |
+| `responseQuality.regenLimitPerInput` | 同じ依頼者入力への差し戻しの上限回数(既定3) |
+| `responseQuality.regenSkipWindowSec` / `regenSkipThreshold` | 再生成ループ防止の窓と閾値。窓内に差し戻した他の入力の数で判定 |
 | `changeGate.projects[]` | 変更ゲートの対象。`clis`(az / aws / cdk)、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef` |
+| `harnessGate.token` / `excludePatterns[]` | ハーネス変更ゲートの GO トークン(既定 `[harness-go]`)と除外パス(既定 `.claude/projects/`) |
 | `draftPrecheck.targets[]` | 送付文面の置き場(bash の case パターン)。`excludePatterns[]`、`bannedTerms[]`、`honorific` |
 | `requireReading.rules[]` | 編集対象(`target`)と必読資料(`requiredReadPattern`)の対応表。`mode: "logs"` で作業ログの特例 |
 | `noInlinePowershell.scriptDirHint` | ファイル化先の案内文 |
 
 設定ファイルは `HARNESS_CONFIG` 環境変数、`$CLAUDE_PROJECT_DIR/.claude/harness.json`、
 hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探します。設定が無い場合、
-応答品質ゲートと PowerShell 禁止は既定値で動き、残り3本は何もしません。
+応答品質ゲート、ハーネス変更ゲート、PowerShell 禁止は既定値で動き、残り3本は何もしません。
 
 ## rules テンプレートについて
 
@@ -128,8 +136,9 @@ Skill は集計を読んだ上で、`harness.json` の変更前後、規則の�
 bash tests/run.sh
 ```
 
-hook 5本に合成の transcript と入力 JSON を与え、差し戻し(exit 2)と通過(exit 0)、バイパス、
-設定なし、再生成ループ防止、検知ログの UTF-8 を確認します。hook や辞書を変えたら実行してください。
+hook 6本に合成の transcript と入力 JSON を与え、差し戻し(exit 2)と通過(exit 0)、バイパス、
+設定なし、差し戻し回数の上限、再生成ループ防止、検知ログの UTF-8 を確認します。hook や辞書を
+変えたら実行してください。
 
 ## ライセンス
 
