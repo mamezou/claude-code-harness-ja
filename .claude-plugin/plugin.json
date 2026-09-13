@@ -1,6 +1,6 @@
 {
   "name": "harness-ja",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "クラウド変更コマンドの停止と、設定・規則ファイルの保護を中心に、日本語の応答の文体検査を任意で加える Claude Code プラグイン。送付文面の事前検査と必読資料の先読みの強制も hook で行う。案件固有の値は利用側の .claude/harness.json で指定する。",
   "author": {
     "name": "mamezou"

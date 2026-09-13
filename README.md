@@ -129,6 +129,7 @@ Stop の2本は同じ文を出して応答は止めません。
 | `draftPrecheck.checks` | 検査項目ごとの on / off。`bannedTerms` / `internalPaths` / `extensions` / `typography` / `externalAi` / `honorific` / `longIdentifiers`(既定すべて true) |
 | `requireReading.rules[]` | 編集対象(`target`)と必読資料(`requiredReadPattern`)の対応表。`mode: "logs"` で作業ログの特例 |
 | `noInlinePowershell.enabled` | 既定は `false`。使う場合だけ `true` にする |
+| `noInlinePowershell.cwdMatch` | 指定すると、cwd がそのディレクトリ名を含むときだけ検査する(案件を限る用途) |
 
 設定ファイルは `HARNESS_CONFIG` 環境変数、`$CLAUDE_PROJECT_DIR/.claude/harness.json`、
 hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探します。

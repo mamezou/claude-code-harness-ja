@@ -82,6 +82,7 @@
   },
   "noInlinePowershell": {
     "enabled": false,
+    "cwdMatch": "",
     "scriptDirHint": "scripts/{category}/*.ps1"
   }
 }

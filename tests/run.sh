@@ -137,6 +137,7 @@ printf '{ "responseQuality": \n' > "$BROKEN"      # JSON として読めない�
 cp "$CFG" "$REGEN/.claude/harness.json"
 jq '.responseQuality.enabled=false'    "$CFG" > "$PROJ/.claude/harness-off.json"
 jq '.noInlinePowershell.enabled=false' "$CFG" > "$PROJ/.claude/harness-psoff.json"
+jq '.noInlinePowershell.cwdMatch="kdkkb"' "$CFG" > "$PROJ/.claude/harness-pscwd.json"
 jq '.harnessChange.enabled=false'      "$CFG" > "$PROJ/.claude/harness-hgoff.json"
 jq '.responseQuality.patterns=[5,18]'  "$CFG" > "$PROJ/.claude/harness-p518.json"
 jq '.draftPrecheck.checks={"internalPaths":false}' "$CFG" > "$PROJ/.claude/harness-dpoff.json"
@@ -314,6 +315,8 @@ edit_input  "$TR/rr-logalt.jsonl"  "$PROJ"   "$WORKLOG"        "b"      > "$IN/r
 
 # no-inline-powershell
 stop_input "$TR/ps-block.jsonl"  "$PROJ"   false > "$IN/ps-block.json"
+stop_input "$TR/ps-block.jsonl"  "$PROJ/kdkkb/docs" false > "$IN/ps-cwd-hit.json"
+stop_input "$TR/ps-block.jsonl"  "$PROJ/other"      false > "$IN/ps-cwd-miss.json"
 stop_input "$TR/ps-spaced.jsonl" "$PROJ"   false > "$IN/ps-spaced.json"
 stop_input "$TR/rq-p8ok.jsonl"   "$PROJ"   false > "$IN/ps-none.json"
 stop_input "$TR/ps-block.jsonl"  "$NOCONF" false > "$IN/ps-noconf.json"
@@ -480,6 +483,8 @@ run "PS-1 6 行の powershell ブロック -> block" 2 no-inline-powershell.sh "
 run "PS-2 空白入り JSON でも検知 -> block" 2 no-inline-powershell.sh "$CFG" "$IN/ps-spaced.json" "scripts/{category}/*.ps1"
 run "PS-3 ブロックなし -> pass" 0 no-inline-powershell.sh "$CFG" "$IN/ps-none.json"
 run "PS-4 enabled:false -> pass" 0 no-inline-powershell.sh "$PROJ/.claude/harness-psoff.json" "$IN/ps-block.json"
+run "PS-5 cwdMatch 一致 -> block" 2 no-inline-powershell.sh "$PROJ/.claude/harness-pscwd.json" "$IN/ps-cwd-hit.json"
+run "PS-6 cwdMatch 不一致 -> pass" 0 no-inline-powershell.sh "$PROJ/.claude/harness-pscwd.json" "$IN/ps-cwd-miss.json"
 
 echo
 echo "== 設定ファイルなし (全 hook が何もしない) =="

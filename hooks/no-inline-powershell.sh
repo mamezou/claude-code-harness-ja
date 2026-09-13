@@ -15,6 +15,8 @@
 #
 # 設定 (.claude/harness.json):
 #   noInlinePowershell.enabled        true で有効化 (既定は無効)
+#   noInlinePowershell.cwdMatch       指定すると、cwd がそのディレクトリ名をパス区切り単位で
+#                                     含むときだけ検査する (空なら常に検査)
 #   noInlinePowershell.scriptDirHint  ファイル化先の案内 (既定 scripts/*.ps1)
 
 set -euo pipefail
@@ -29,6 +31,15 @@ if ! cfg_enabled_optin '.noInlinePowershell'; then
 fi
 
 script_dir_hint=$(cfg '.noInlinePowershell.scriptDirHint' 'scripts/*.ps1')
+
+# 0) cwdMatch が設定されていれば、cwd がパス区切り単位で一致するときだけ検査する
+cwd_match=$(cfg '.noInlinePowershell.cwdMatch' '')
+if [[ -n "$cwd_match" ]]; then
+  cwd_norm=$(printf '%s' "$input" | jq -r '.cwd // empty' | sed -E 's#/+#/#g; s#/$##')
+  if [[ "$cwd_norm" != */"$cwd_match" && "$cwd_norm" != */"$cwd_match"/* ]]; then
+    exit 0
+  fi
+fi
 
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty')
 
