@@ -8,7 +8,7 @@
   "plugins": [
     {
       "name": "harness-ja",
-      "description": "日本語の応答品質ゲートとクラウド変更ゲートを hook で機械化するプラグイン",
+      "description": "日本語の応答の文体検査とクラウド変更コマンドの停止を hook で機械化するプラグイン",
       "source": "./",
       "category": "productivity"
     }

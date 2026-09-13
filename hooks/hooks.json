@@ -1,5 +1,5 @@
 {
-  "description": "harness-ja: 応答品質ゲート (Stop)、変更コマンドゲートとハーネス変更ゲート (PreToolUse Bash)、送付文面の事前検査・資料先読み強制・ハーネス変更ゲート (PreToolUse Write|Edit|MultiEdit)",
+  "description": "harness-ja: 応答の文体検査 (Stop)、クラウド変更コマンドの停止とハーネス自体の変更の停止 (PreToolUse Bash)、送付文面の事前検査・必読資料の先読みの強制・ハーネス自体の変更の停止 (PreToolUse Write|Edit|MultiEdit)",
   "hooks": {
     "PreToolUse": [
       {
@@ -7,11 +7,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/change-gate.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/cloud-change-check.sh\""
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/harness-change-gate.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/harness-change-check.sh\""
           }
         ]
       },
@@ -28,7 +28,7 @@
           },
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/harness-change-gate.sh\""
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/hooks/harness-change-check.sh\""
           }
         ]
       }

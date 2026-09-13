@@ -4,9 +4,9 @@
 #
 # 使い方:
 #   harness_load_config "$hook_input_json"   # cwd / CLAUDE_PROJECT_DIR から設定ファイルを特定
-#   cfg '.changeGate.enabled' 'true'         # jq フィルタで値を取る。null なら第 2 引数の既定値
+#   cfg '.cloudChange.enabled' 'true'        # jq フィルタで値を取る。null なら第 2 引数の既定値
 #   cfg_list '.draftPrecheck.bannedTerms[]?' # 配列を 1 行 1 要素で出す
-#   cfg_enabled '.changeGate'                # .enabled が false なら 1 (無効)、それ以外は 0
+#   cfg_enabled '.cloudChange'               # .enabled が false なら 1 (無効)、それ以外は 0
 #
 # 設定ファイルの探索順:
 #   1. 環境変数 HARNESS_CONFIG (テストや複数プロジェクト用の上書き)

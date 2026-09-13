@@ -11,12 +11,12 @@
     "regenSkipWindowSec": 1800,
     "regenSkipThreshold": 2
   },
-  "harnessGate": {
+  "harnessChange": {
     "enabled": true,
     "token": "[harness-go]",
     "excludePatterns": [".claude/projects/"]
   },
-  "changeGate": {
+  "cloudChange": {
     "enabled": true,
     "projects": [
       {
@@ -25,7 +25,7 @@
         "cwdMatch": "project-a",
         "runbookPattern": "(docs/runbooks/.*\\.md|runbook.*\\.md)",
         "runbookHint": "docs/runbooks/*.md",
-        "guideRef": "project-a/CLAUDE.md「変更作業のゲート」"
+        "guideRef": "project-a/CLAUDE.md「クラウド変更の手順」"
       },
       {
         "name": "project-b",
@@ -33,7 +33,7 @@
         "cwdMatch": "project-b",
         "runbookPattern": "(project-b/docs/runbooks/.*\\.md|runbook.*\\.md)",
         "runbookHint": "project-b/docs/runbooks/ 配下の .md",
-        "guideRef": "project-b/CLAUDE.md「変更作業のゲート」"
+        "guideRef": "project-b/CLAUDE.md「クラウド変更の手順」"
       }
     ]
   },

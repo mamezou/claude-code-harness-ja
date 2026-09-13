@@ -19,7 +19,7 @@ if ! command -v jq >/dev/null 2>&1; then
   echo "jq が見つかりません。jq を入れてから再実行してください。" >&2
   exit 1
 fi
-for f in change-gate.sh draft-precheck.sh harness-change-gate.sh no-inline-powershell.sh \
+for f in cloud-change-check.sh draft-precheck.sh harness-change-check.sh no-inline-powershell.sh \
          require-reading.sh response-quality.sh; do
   if [[ ! -f "$H/$f" ]]; then
     echo "hook が見つかりません: $H/$f" >&2
@@ -78,12 +78,12 @@ cat > "$CFG" <<'JSON'
     "regenSkipWindowSec": 1800,
     "regenSkipThreshold": 2
   },
-  "harnessGate": {
+  "harnessChange": {
     "enabled": true,
     "token": "[harness-go]",
     "excludePatterns": [".claude/projects/"]
   },
-  "changeGate": {
+  "cloudChange": {
     "enabled": true,
     "projects": [
       {
@@ -138,7 +138,7 @@ for d in "$REGEN" "$SKIP" "$XSESS" "$OLDFMT"; do
 done
 jq '.responseQuality.enabled=false'    "$CFG" > "$PROJ/.claude/harness-off.json"
 jq '.noInlinePowershell.enabled=false' "$CFG" > "$PROJ/.claude/harness-psoff.json"
-jq '.harnessGate.enabled=false'        "$CFG" > "$PROJ/.claude/harness-hgoff.json"
+jq '.harnessChange.enabled=false'      "$CFG" > "$PROJ/.claude/harness-hgoff.json"
 touch "$PROJ/TODO.md"
 
 # ---------------------------------------------------------------------------
@@ -175,11 +175,11 @@ mk_user_spaced() { printf '{"type": "user", "uuid": "%s", "message": {"role": "u
 { mk_user "認識はあってる?";      mk_asst "認識にズレがあります。"; }                        > "$TR/rq-p19-dis.jsonl"
 { mk_user "認識はあってる?";      mk_asst "認識にズレがあります。出典は設計書の3章です。"; } > "$TR/rq-p19-disok.jsonl"
 
-# harness-change-gate 用 (ツール結果行を挟む)
+# harness-change-check 用 (ツール結果行を挟む)
 { mk_user "hook を直して";              mk_toolres; } > "$TR/hg-nogo.jsonl"
 { mk_user "hook を直して [harness-go]"; mk_toolres; } > "$TR/hg-go.jsonl"
 
-# change-gate 用 (ツール結果行を挟む)
+# cloud-change-check 用 (ツール結果行を挟む)
 { mk_user "リソースグループを作って";                        mk_toolres; }                          > "$TR/cg-nogo.jsonl"
 { mk_user "リソースグループを作って [change-go: project-a]"; mk_read "$PROJ/docs/runbooks/rg.md"; } > "$TR/cg-go.jsonl"
 
@@ -234,14 +234,14 @@ stop_input "$TR/rq-p19-docok.jsonl" "$PROJ" false > "$IN/rq-p19-docok.json"
 stop_input "$TR/rq-p19-dis.jsonl"   "$PROJ" false > "$IN/rq-p19-dis.json"
 stop_input "$TR/rq-p19-disok.jsonl" "$PROJ" false > "$IN/rq-p19-disok.json"
 
-# harness-change-gate
+# harness-change-check
 write_input "$TR/hg-nogo.jsonl" "$PROJ" "$PROJ/.claude/rules/x.md"            "本文"   > "$IN/hg-write.json"
 write_input "$TR/hg-go.jsonl"   "$PROJ" "$PROJ/.claude/rules/x.md"            "本文"   > "$IN/hg-go.json"
 write_input "$TR/hg-nogo.jsonl" "$PROJ" "$PROJ/.claude/projects/p/state.json" "{}"     > "$IN/hg-proj.json"
 bash_input  "$TR/hg-nogo.jsonl" "$PROJ" "echo x > $PROJ/.claude/settings.json"         > "$IN/hg-bash.json"
 bash_input  "$TR/hg-nogo.jsonl" "$PROJ" "cp $PROJ/.claude/hooks/x.sh /tmp/"            > "$IN/hg-read.json"
 
-# change-gate
+# cloud-change-check
 cg_change="az group create --name rg-test --location japaneast"
 bash_input "$TR/cg-nogo.jsonl" "$PROJ"        "$cg_change"                        > "$IN/cg-create.json"
 bash_input "$TR/cg-nogo.jsonl" "$PROJ"        "az group list"                     > "$IN/cg-list.json"
@@ -401,24 +401,24 @@ run "RQ-18 出典を引かずに認識を否定 -> block"     2 response-quality
 run "RQ-19 出典を引いた -> pass"                   0 response-quality.sh "$CFG" "$IN/rq-p19-disok.json"
 
 echo
-echo "== change-gate =="
-run "CG-1 変更系 (GO/runbook なし) -> block" 2 change-gate.sh "$CFG" "$IN/cg-create.json" "[change-go: project-a]"
-run "CG-2 read-only なコマンド -> pass" 0 change-gate.sh "$CFG" "$IN/cg-list.json"
-run "CG-3 GO + runbook Read -> pass" 0 change-gate.sh "$CFG" "$IN/cg-go.json"
-run "CG-4 設定ファイルなし -> pass" 0 change-gate.sh "$NOCFG" "$IN/cg-noconf.json"
-run "CG-5 examples 設定 + cwd project-a -> block" 2 change-gate.sh "$EX" "$IN/cg-example.json" "[change-go: project-a]"
-run "CG-6 examples 設定 + cdk deploy (project-b) -> block" 2 change-gate.sh "$EX" "$IN/cg-cdk.json" "[change-go: project-b]"
-run "CG-7 どの案件にも一致しない変更系 -> pass" 0 change-gate.sh "$EX" "$IN/cg-nomatch.json"
-run "CG-8 ローカル CLI 設定 -> pass (除外)" 0 change-gate.sh "$CFG" "$IN/cg-acct.json"
+echo "== cloud-change-check =="
+run "CG-1 変更系 (GO/runbook なし) -> block" 2 cloud-change-check.sh "$CFG" "$IN/cg-create.json" "[change-go: project-a]"
+run "CG-2 read-only なコマンド -> pass" 0 cloud-change-check.sh "$CFG" "$IN/cg-list.json"
+run "CG-3 GO + runbook Read -> pass" 0 cloud-change-check.sh "$CFG" "$IN/cg-go.json"
+run "CG-4 設定ファイルなし -> pass" 0 cloud-change-check.sh "$NOCFG" "$IN/cg-noconf.json"
+run "CG-5 examples 設定 + cwd project-a -> block" 2 cloud-change-check.sh "$EX" "$IN/cg-example.json" "[change-go: project-a]"
+run "CG-6 examples 設定 + cdk deploy (project-b) -> block" 2 cloud-change-check.sh "$EX" "$IN/cg-cdk.json" "[change-go: project-b]"
+run "CG-7 どの案件にも一致しない変更系 -> pass" 0 cloud-change-check.sh "$EX" "$IN/cg-nomatch.json"
+run "CG-8 ローカル CLI 設定 -> pass (除外)" 0 cloud-change-check.sh "$CFG" "$IN/cg-acct.json"
 
 echo
-echo "== harness-change-gate =="
-run "HG-1 .claude/rules/ を Write (GO なし) -> block" 2 harness-change-gate.sh "$CFG" "$IN/hg-write.json" "[harness-go]"
-run "HG-2 Bash のリダイレクト先が .claude/ -> block" 2 harness-change-gate.sh "$CFG" "$IN/hg-bash.json" "[harness-go]"
-run "HG-3 .claude/ からのコピー (読み取り) -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-read.json"
-run "HG-4 GO トークンあり -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-go.json"
-run "HG-5 除外パス (.claude/projects/) -> pass" 0 harness-change-gate.sh "$CFG" "$IN/hg-proj.json"
-run "HG-6 enabled:false -> pass" 0 harness-change-gate.sh "$PROJ/.claude/harness-hgoff.json" "$IN/hg-write.json"
+echo "== harness-change-check =="
+run "HG-1 .claude/rules/ を Write (GO なし) -> block" 2 harness-change-check.sh "$CFG" "$IN/hg-write.json" "[harness-go]"
+run "HG-2 Bash のリダイレクト先が .claude/ -> block" 2 harness-change-check.sh "$CFG" "$IN/hg-bash.json" "[harness-go]"
+run "HG-3 .claude/ からのコピー (読み取り) -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-read.json"
+run "HG-4 承認トークンあり -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-go.json"
+run "HG-5 除外パス (.claude/projects/) -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-proj.json"
+run "HG-6 enabled:false -> pass" 0 harness-change-check.sh "$PROJ/.claude/harness-hgoff.json" "$IN/hg-write.json"
 
 echo
 echo "== draft-precheck =="
@@ -432,7 +432,7 @@ run "DP-7 examples 設定 (honorific 空) -> pass" 0 draft-precheck.sh "$EX" "$I
 
 echo
 echo "== require-reading =="
-run "RR-1 TODO.md を Read なしで Edit -> block" 2 require-reading.sh "$CFG" "$IN/rr-noread.json" "資料先読みの原則"
+run "RR-1 TODO.md を Read なしで Edit -> block" 2 require-reading.sh "$CFG" "$IN/rr-noread.json" "必読資料の先読みの原則"
 run "RR-2 直近に TODO.md の Read あり -> pass" 0 require-reading.sh "$CFG" "$IN/rr-read.json"
 rm -f "$WORKLOG"
 run "RR-3 logs 新規 + Read なし -> block" 2 require-reading.sh "$CFG" "$IN/rr-lognew.json" "新規ログファイル"

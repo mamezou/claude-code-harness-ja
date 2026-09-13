@@ -1,10 +1,10 @@
 #!/bin/bash
-# ハーネス変更ゲート (PreToolUse, matcher=Bash および Write|Edit|MultiEdit)
+# ハーネス自体の変更の停止 (PreToolUse, matcher=Bash および Write|Edit|MultiEdit)
 # `.claude/` 配下 (hooks / rules / skills / output-styles / agents / settings.json 等) の
-# 書き換えを、最後の依頼者のテキスト入力に GO トークンがある場合にだけ通す。
+# 書き換えを、最後の依頼者のテキスト入力に承認トークンがある場合にだけ通す。
 #
 # 根拠: 設定・ルールファイルの書き換えは、依頼者の言葉で明示された指示があるときだけ行う
-#       (rules「start-approval」承認)。設計は change-gate.sh と同型 (最後の依頼者の
+#       (rules「start-approval」承認)。設計は cloud-change-check.sh と同型 (最後の依頼者の
 #       テキスト入力のトークンで判定する)。
 #
 # 発火条件:
@@ -21,7 +21,7 @@
 #
 # 通過条件:
 #   - 最後の依頼者のテキスト入力 (ツール結果行・hook のフィードバック行・ローカルコマンドの
-#     記録を除く) に GO トークンがある。トークン 1 通で、次の依頼者の入力までの複数の
+#     記録を除く) に承認トークンがある。トークン 1 通で、次の依頼者の入力までの複数の
 #     書き換えが通る
 #
 # 限界:
@@ -30,9 +30,9 @@
 #   - アシスタント側からのトークンの提案・要求は禁止 (rules「start-approval」)
 #
 # 設定 (.claude/harness.json):
-#   harnessGate.enabled           false で無効化 (既定 true。設定が無くても動く)
-#   harnessGate.token             GO トークン (既定 [harness-go])
-#   harnessGate.excludePatterns[] パスに含めば対象外にする文字列 (既定 .claude/projects/)
+#   harnessChange.enabled           false で無効化 (既定 true。設定が無くても動く)
+#   harnessChange.token             承認トークン (既定 [harness-go])
+#   harnessChange.excludePatterns[] パスに含めば対象外にする文字列 (既定 .claude/projects/)
 
 set -euo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
@@ -40,18 +40,18 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
 input=$(cat)
 harness_load_config "$input"
 
-if ! cfg_enabled '.harnessGate'; then
+if ! cfg_enabled '.harnessChange'; then
   exit 0
 fi
 
 principal=$(harness_principal)
-go_token=$(cfg '.harnessGate.token' '[harness-go]')
+go_token=$(cfg '.harnessChange.token' '[harness-go]')
 
 # 除外パターン (設定が無ければ既定の 1 件)
 exclude_patterns=()
 while IFS= read -r ex; do
   [[ -n "$ex" ]] && exclude_patterns+=("$ex")
-done < <(cfg_list '.harnessGate.excludePatterns[]?')
+done < <(cfg_list '.harnessChange.excludePatterns[]?')
 if [[ ${#exclude_patterns[@]} -eq 0 ]]; then
   exclude_patterns=(".claude/projects/")
 fi
@@ -125,7 +125,7 @@ if [[ -n "$transcript" && -f "$transcript" ]]; then
   last_user_msg=$(harness_last_user_entry "$transcript" 2000 | jq -r '.text // empty' 2>/dev/null || true)
 fi
 
-# 3) GO トークン判定
+# 3) 承認トークン判定
 if printf '%s' "$last_user_msg" | grep -qF -- "$go_token"; then
   exit 0
 fi
@@ -133,7 +133,7 @@ fi
 # 4) ブロック
 exclude_hint=$(printf '%s, ' "${exclude_patterns[@]}" | sed 's/, $//')
 cat >&2 <<MSG
-[ハーネス変更ゲート違反]
+[ハーネス自体の変更の停止]
 \`.claude/\` 配下 (${target}) を ${detail}ようとしていますが、
 最後の${principal}のテキスト入力に ${go_token} がありません。
 

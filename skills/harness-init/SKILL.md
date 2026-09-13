@@ -5,7 +5,7 @@ description: harness-ja を利用側プロジェクトへ初期設定する。.c
 
 # harness-ja の初期設定
 
-利用側プロジェクトに、hook が読む設定ファイルと、常時ロードする rules を配置する。
+利用側プロジェクトに、hook が読む設定ファイルと、常に読み込む rules を配置する。
 プラグインは rules を自動ロードできないため、テンプレートを複製して使う。
 
 ## 手順
@@ -42,7 +42,7 @@ mkdir -p docs/logs
 
 6. `.claude/harness.json` を開き、利用者に次の項目を案件に合わせて書き換えてもらう。項目ごとに用途を1行で説明する。
    - `principal`: 承認者の呼び名。hook の通知文に使う
-   - `changeGate.projects[]`: 変更ゲートの対象案件。`clis`、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef`
+   - `cloudChange.projects[]`: クラウド変更コマンドの停止の対象案件。`clis`、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef`
    - `draftPrecheck.targets[]`: 送付文面の置き場(bash の case パターン)。`bannedTerms[]` に案件の禁止語
    - `requireReading.rules[]`: 編集前に必読とする資料の対応表
    - 使わない機能は `"enabled": false` で止める

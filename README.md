@@ -22,7 +22,7 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 | 種別 | 内容 |
 |---|---|
-| hooks(6本) | 応答品質ゲート、クラウド変更コマンドのゲート、ハーネス変更のゲート、送付文面の事前検査、資料先読みの強制、インライン PowerShell の禁止 |
+| hooks(6本) | 応答の文体検査、クラウド変更コマンドの停止、ハーネス自体の変更の停止、送付文面の事前検査、必読資料の先読みの強制、インライン PowerShell の禁止 |
 | Output Style | `Concise JA`。簡潔な日本語応答と、依頼者への返信文体の規則 |
 | rules テンプレート(2本) | 着手と承認、文章の書き方 |
 | Skills(2本) | `harness-init`(初期設定)、`harness-review`(週次レビュー) |
@@ -54,9 +54,9 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 | hook | イベント | 止める条件 | バイパス |
 |---|---|---|---|
-| `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表・箇条書きが文で終わる、指示語の多用、逃げの締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
-| `change-gate.sh` | PreToolUse(Bash) | az / aws / cdk の変更系コマンドで、手順書の Read と `[change-go: <案件>]` のいずれかが無い | `[hook-bypass: change-gate]` |
-| `harness-change-gate.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(トークンが承認を兼ねる) |
+| `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表・箇条書きが文で終わる、指示語の多用、結論をぼかす締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
+| `cloud-change-check.sh` | PreToolUse(Bash) | az / aws / cdk の変更系コマンドで、手順書の Read と `[change-go: <案件>]` のいずれかが無い | `[hook-bypass: cloud-change]` |
+| `harness-change-check.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(トークンが承認を兼ねる) |
 | `draft-precheck.sh` | PreToolUse(Write / Edit) | 送付文面に内部パス・ローカル拡張子・組版記号・外部 AI 言及・禁止語・長い識別子の繰り返し | `[hook-bypass: draft-precheck]` |
 | `require-reading.sh` | PreToolUse(Write / Edit) | 必読資料を直近で Read せずに対象ファイルを編集 | `[hook-bypass: resource-reading]` |
 | `no-inline-powershell.sh` | Stop | 5行以上の PowerShell をファイル化せずにコードブロックで提示 | なし |
@@ -64,7 +64,7 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 バイパストークンは利用者が自分のメッセージに書く運用です。Claude 側からの提案・要求は
 rules テンプレートで禁止しています。
 
-応答品質ゲートは、差し戻し後の再生成(`stop_hook_active=true`)も検査します。同じ依頼者入力
+応答の文体検査は、差し戻し後の再生成(`stop_hook_active=true`)も検査します。同じ依頼者入力
 への差し戻しが3回に達したら、4回目の生成を `[regen-limit]` 付きで通します(無限ループ防止を
 兼ねます)。加えて、同じセッションで直近30分に別の入力を2件差し戻していれば、次の差し戻しを
 `[regen-skip]` 付きで通します(体裁の差し戻しの反復で読みやすさが下がるのを防ぐため)。
@@ -84,19 +84,19 @@ rules テンプレートで禁止しています。
 | `responseQuality.logPath` | 検知ログの置き場(プロジェクトルートからの相対パス) |
 | `responseQuality.regenLimitPerInput` | 同じ依頼者入力への差し戻しの上限回数(既定3) |
 | `responseQuality.regenSkipWindowSec` / `regenSkipThreshold` | 再生成ループ防止の窓と閾値。窓内に差し戻した他の入力の数で判定 |
-| `changeGate.projects[]` | 変更ゲートの対象。`clis`(az / aws / cdk)、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef` |
-| `harnessGate.token` / `excludePatterns[]` | ハーネス変更ゲートの GO トークン(既定 `[harness-go]`)と除外パス(既定 `.claude/projects/`) |
+| `cloudChange.projects[]` | クラウド変更コマンドの停止の対象。`clis`(az / aws / cdk)、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef` |
+| `harnessChange.token` / `excludePatterns[]` | ハーネス自体の変更の停止の承認トークン(既定 `[harness-go]`)と除外パス(既定 `.claude/projects/`) |
 | `draftPrecheck.targets[]` | 送付文面の置き場(bash の case パターン)。`excludePatterns[]`、`bannedTerms[]`、`honorific` |
 | `requireReading.rules[]` | 編集対象(`target`)と必読資料(`requiredReadPattern`)の対応表。`mode: "logs"` で作業ログの特例 |
 | `noInlinePowershell.scriptDirHint` | ファイル化先の案内文 |
 
 設定ファイルは `HARNESS_CONFIG` 環境変数、`$CLAUDE_PROJECT_DIR/.claude/harness.json`、
 hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探します。設定が無い場合、
-応答品質ゲート、ハーネス変更ゲート、PowerShell 禁止は既定値で動き、残り3本は何もしません。
+応答の文体検査、ハーネス自体の変更の停止、PowerShell 禁止は既定値で動き、残り3本は何もしません。
 
 ## rules テンプレートについて
 
-プラグインは `.claude/rules/` 相当の常時ロード指示を配布できないため、`rules-templates/` を
+プラグインは `.claude/rules/` 相当の常に読み込まれる指示を配布できないため、`rules-templates/` を
 `/harness-init` で利用側へ複製します。複製後は利用側で自由に編集してください。
 
 文章の規則のうち、次の3つは grep や hook で検知できないため、`writing-style.md` の
@@ -117,7 +117,7 @@ hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探�
 | 種別ごとの件数 | 今期間・前期間・増減 |
 | 種別ごとの検出例 | 各3件。誤検知か実違反かを読んで判断する材料 |
 | 検出語の頻度 | 辞書から外す語、閾値を上げる語の候補 |
-| 常時ロード指示の行数 | CLAUDE.md と rules の合計。増え続けていないかの確認 |
+| 常に読み込まれる指示の行数 | CLAUDE.md と rules の合計。増え続けていないかの確認 |
 
 Skill は集計を読んだ上で、`harness.json` の変更前後、規則の追記文、lessons への起票案を
 【確認点】の型で提示し、承認された項目だけ反映します。1回のレビューで変える項目は3件までとし、

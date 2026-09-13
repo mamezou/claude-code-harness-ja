@@ -5,7 +5,7 @@
 # 発火条件:
 #   - コマンドが az / aws / cdk の変更系
 #   - 案件判定はコマンド内容と cwd で行う (cwd 配下でなくても発火する)
-#     - 設定の changeGate.projects[] を配列順に照合し、最初に一致した要素を使う
+#     - 設定の cloudChange.projects[] を配列順に照合し、最初に一致した要素を使う
 #     - clis[] に検出した CLI (az / aws / cdk) が含まれ、かつ cwdMatch が空、または
 #       コマンドか cwd に cwdMatch の文字列を含めば一致
 #     - どの要素にも一致しない変更系コマンド (他案件のプロファイル等) は対象外
@@ -17,7 +17,7 @@
 #       (ツール実行結果の行は読み飛ばすため、トークン 1 通で次の入力までの複数コマンドが通る)
 #
 # バイパス:
-#   - 最後のユーザーのテキスト入力に [hook-bypass: change-gate] がある場合、全条件無視
+#   - 最後のユーザーのテキスト入力に [hook-bypass: cloud-change] がある場合、全条件無視
 #
 # 除外:
 #   - 単独の az config / az account set (ローカル CLI 設定)
@@ -25,8 +25,8 @@
 #     aws login / aws configure / aws sts get-caller-identity
 #
 # 設定 (.claude/harness.json):
-#   changeGate.enabled          false で無効化
-#   changeGate.projects[]       name / clis[] / cwdMatch / runbookPattern / runbookHint / guideRef
+#   cloudChange.enabled          false で無効化
+#   cloudChange.projects[]       name / clis[] / cwdMatch / runbookPattern / runbookHint / guideRef
 #   設定ファイルが無い、または projects が空なら何もしない
 
 set -euo pipefail
@@ -35,11 +35,11 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
 input=$(cat)
 harness_load_config "$input"
 
-if ! cfg_enabled '.changeGate'; then
+if ! cfg_enabled '.cloudChange'; then
   exit 0
 fi
 
-project_count=$(cfg '.changeGate.projects | length' '0')
+project_count=$(cfg '.cloudChange.projects | length' '0')
 if [[ "${project_count:-0}" -eq 0 ]]; then
   exit 0
 fi
@@ -128,7 +128,7 @@ while IFS= read -r proj; do
   runbook_hint=$(printf '%s' "$proj" | jq -r '.runbookHint // empty')
   guide_ref=$(printf '%s' "$proj" | jq -r '.guideRef // empty')
   break
-done < <(cfg_list '.changeGate.projects[]? | @json')
+done < <(cfg_list '.cloudChange.projects[]? | @json')
 
 # どの要素にも一致しない変更系コマンドは対象外
 if [[ -z "$project" ]]; then
@@ -138,7 +138,7 @@ fi
 # 要素に指定が無い場合の保険 (空パターンは全一致になるため既定を置く)
 [[ -n "$runbook_pattern" ]] || runbook_pattern='runbook.*\.md'
 [[ -n "$runbook_hint" ]] || runbook_hint='ファイル名に runbook を含む .md'
-[[ -n "$guide_ref" ]] || guide_ref='変更作業のゲート'
+[[ -n "$guide_ref" ]] || guide_ref='クラウド変更の手順'
 
 go_token="[change-go: ${project}]"
 
@@ -148,7 +148,7 @@ detected_cmd=$(printf '%s' "$command" | sed -E 's/^[[:space:]]*//' | awk '{print
 transcript=$(printf '%s' "$input" | jq -r '.transcript_path // empty')
 if [[ -z "$transcript" || ! -f "$transcript" ]]; then
   cat >&2 <<MSG
-[変更作業ゲート違反]
+[クラウド変更コマンドの停止]
 transcript が取得できないため、runbook 参照と GO の確認ができません。
 新規セッションの最初の変更コマンドは、手順書を Read し、${principal}に
 ${go_token} を含むメッセージで GO を出してもらってから実行してください。
@@ -162,11 +162,11 @@ fi
 last_user_msg=$(harness_last_user_text "$transcript")
 
 # 7) バイパス判定
-if printf '%s' "$last_user_msg" | grep -qF '[hook-bypass: change-gate]'; then
+if printf '%s' "$last_user_msg" | grep -qF '[hook-bypass: cloud-change]'; then
   exit 0
 fi
 
-# 8) GO トークン判定
+# 8) 承認トークン判定
 has_go=0
 if printf '%s' "$last_user_msg" | grep -qF "$go_token"; then
   has_go=1
@@ -197,7 +197,7 @@ if [[ "$has_go" -eq 0 ]]; then
 fi
 
 cat >&2 <<MSG
-[変更作業ゲート違反]
+[クラウド変更コマンドの停止]
 az / aws / cdk の変更系コマンド (${detected_cmd}...) を実行しようとしていますが、
 以下の条件が満たされていません:
 $(printf "${missing}")
@@ -209,7 +209,7 @@ ${guide_ref}の手順:
 4. その直後に変更コマンドを実行する
 
 read-only コマンド (list/get/show/describe/query、cdk synth/diff) はブロック対象外です。
-緊急時のみ、${principal}が [hook-bypass: change-gate] を含めることで回避可能です。
+緊急時のみ、${principal}が [hook-bypass: cloud-change] を含めることで回避可能です。
 アシスタント側からのバイパス提案・要求は禁止 (rules「start-approval」)。
 MSG
 exit 2
