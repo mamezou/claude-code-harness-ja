@@ -9,14 +9,12 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 1. hook が応答を差し戻し、検知した種別と語を `.claude/harness-detections.log` に記録する
 2. 週次で `/harness-review` を実行し、種別ごとの件数・前週比・検出例を集計する
-3. 検出例を読んで「誤検知 / 実違反 / 規則の曖昧さ」に分け、辞書と閾値(`harness.json`)、
-   規則(rules と Output Style)、失敗の台帳(`docs/logs/lessons-*.md`)への反映案を出す
-4. 承認された項目だけ反映し、変更の日付と理由を `lessons-index.md` に残す
-5. 次の週の件数で効果を確かめる
+3. 検出例を「誤検知 / 実違反 / 規則の曖昧さ」に分け、承認された項目だけ辞書・閾値
+   (`harness.json`)と規則(rules と Output Style)へ反映する
 
-機械で止められる違反は hook へ、止められない判断は規則へ、判断の根拠は台帳へ、と置き場を
-分けています。hook と規則の両方に同じ違反を書くのは、規則の側が「なぜ止めるか」を
-説明するためです。
+機械で止められる違反は hook へ、止められない判断は規則へ、と置き場を分けています。
+hook と規則の両方に同じ違反を書くのは、規則の側が「なぜ止めるか」を説明するためです。
+hook や規則を変えた理由は、各 hook の冒頭コメントとコミットメッセージに残します。
 
 ## 収録物
 
@@ -26,7 +24,6 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 | Output Style | `Concise JA`。簡潔な日本語応答と、依頼者への返信文体の規則 |
 | rules テンプレート(2本) | 着手と承認、文章の書き方 |
 | Skills(2本) | `harness-init`(初期設定)、`harness-review`(週次レビュー) |
-| docs テンプレート(2本) | 失敗の台帳 `lessons.md` と索引 `lessons-index.md` |
 | tests | hook 6本の合成入力テスト。`bash tests/run.sh` |
 
 ## 動作環境
@@ -46,7 +43,7 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 /harness-init
 ```
 
-`.claude/harness.json` の作成、rules テンプレートと lessons 台帳の複製、
+`.claude/harness.json` の作成、rules テンプレートの複製、
 `.gitignore` の追記を行います。作成された `harness.json` を案件に合わせて書き換えてください。Output Style は
 `/config` から「Concise JA」を選びます。
 
@@ -119,16 +116,9 @@ hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探�
 | 検出語の頻度 | 辞書から外す語、閾値を上げる語の候補 |
 | 常に読み込まれる指示の行数 | CLAUDE.md と rules の合計。増え続けていないかの確認 |
 
-Skill は集計を読んだ上で、`harness.json` の変更前後、規則の追記文、lessons への起票案を
-【確認点】の型で提示し、承認された項目だけ反映します。1回のレビューで変える項目は3件までとし、
-効果を次回の件数で確かめてから次を変えます。
-
-## 失敗の台帳 lessons
-
-`docs/logs/lessons-YYYYMMDD.md` に1件1節(起きたこと / 原因 / 再発防止 / 機械的緩和策)で
-起票し、`docs/logs/lessons-index.md` の一覧に1行追記します。hook・辞書・閾値を変えたときは
-同じ索引の「機械的緩和策の経緯」に日付と理由を残します。テンプレートは `docs-templates/` にあり、
-`/harness-init` が複製します。
+Skill は集計を読んだ上で、`harness.json` の変更前後と規則の追記文を【確認点】の型で提示し、
+承認された項目だけ反映します。1回のレビューで変える項目は3件までとし、効果を次回の件数で
+確かめてから次を変えます。
 
 ## テスト
 

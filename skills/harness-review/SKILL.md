@@ -1,6 +1,6 @@
 ---
 name: harness-review
-description: 検知ログを集計し、誤検知と実違反を切り分けて、harness.json の辞書・閾値、rules、lessons への反映案を提示する週次レビュー。「ハーネスの週次レビュー」「検知ログを見て」「/harness-review」で呼び出す。
+description: 検知ログを集計し、誤検知と実違反を切り分けて、harness.json の辞書・閾値と rules への反映案を提示する週次レビュー。「ハーネスの週次レビュー」「検知ログを見て」「/harness-review」で呼び出す。
 argument-hint: "[--days N]"
 ---
 
@@ -24,7 +24,7 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/harness-review/summarize.sh" $ARGUMENTS
    - 誤検知: `.claude/harness.json` の辞書から語を外す、閾値を上げる、除外条件を足す。
      hook 本体の正規表現を変える必要があるときは、対象の hook 名と変更案を書く
    - 実違反で規則が既にある: 規則の文言を具体化する案(該当する rules か Output Style の節を引用)
-   - 実違反で規則が無い: lessons へ起票する案(起きたこと / 原因 / 再発防止 / 機械的緩和策)
+   - 実違反で規則が無い: 規則へ足す1〜2行の追記文(該当する rules か Output Style の節を指定)
 4. 常に読み込まれる指示の行数を前回のレビューと比べ、増えていれば削る候補を1つ挙げる。
 5. 次の型で報告し、反映の可否を仰ぐ。反映前に編集しない。
 
@@ -38,13 +38,10 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/harness-review/summarize.sh" $ARGUMENTS
 
 【確認点2】規則の追記
 <ファイル名と追記文>。可否をお願いいたします。
-
-【確認点3】lessons への起票
-<F番号案、概要、機械的緩和策の有無>。可否をお願いいたします。
 ```
 
-6. 承認された項目だけ反映する。lessons へ起票したら `docs/logs/lessons-index.md` にも1行追記する。
-   hook や辞書を変えたら、変えた日と理由を lessons-index の「機械的緩和策の経緯」に1行残す。
+6. 承認された項目だけ反映する。hook や辞書を変えたら、変えた理由を hook 冒頭のコメントと
+   コミットメッセージに残す。
 
 ## 判断の基準
 
@@ -58,4 +55,4 @@ bash "${CLAUDE_PLUGIN_ROOT}/skills/harness-review/summarize.sh" $ARGUMENTS
 ## 完了条件
 
 - 集計出力を読み、種別上位3つに分類と対応案が付いている
-- 反映は承認された項目のみで、lessons-index に反映の記録がある
+- 反映は承認された項目のみで、変更の理由が hook のコメントとコミットメッセージに残っている
