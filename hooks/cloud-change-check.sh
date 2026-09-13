@@ -14,7 +14,7 @@
 #   (A) 直近 200 行の transcript で runbookPattern に一致するファイルの
 #       Read/Write/Edit/MultiEdit がある
 #   (B) 最後のユーザーのテキスト入力に [change-go: <name>] がある
-#       (ツール実行結果の行は読み飛ばすため、トークン 1 通で次の入力までの複数コマンドが通る)
+#       (ツール実行結果の行は読み飛ばすため、文字列 1 通で次の入力までの複数コマンドが通る)
 #
 # バイパス:
 #   - 最後のユーザーのテキスト入力に [hook-bypass: cloud-change] がある場合、全条件無視
@@ -166,7 +166,7 @@ if printf '%s' "$last_user_msg" | grep -qF '[hook-bypass: cloud-change]'; then
   exit 0
 fi
 
-# 8) 承認トークン判定
+# 8) 承認の文字列判定
 has_go=0
 if printf '%s' "$last_user_msg" | grep -qF "$go_token"; then
   has_go=1

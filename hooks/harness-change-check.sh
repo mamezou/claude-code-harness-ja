@@ -1,11 +1,11 @@
 #!/bin/bash
 # ハーネス自体の変更の停止 (PreToolUse, matcher=Bash および Write|Edit|MultiEdit)
 # `.claude/` 配下 (hooks / rules / skills / output-styles / agents / settings.json 等) の
-# 書き換えを、最後の依頼者のテキスト入力に承認トークンがある場合にだけ通す。
+# 書き換えを、最後の依頼者のテキスト入力に承認の文字列がある場合にだけ通す。
 #
 # 根拠: 設定・ルールファイルの書き換えは、依頼者の言葉で明示された指示があるときだけ行う
 #       (rules「start-approval」承認)。設計は cloud-change-check.sh と同型 (最後の依頼者の
-#       テキスト入力のトークンで判定する)。
+#       テキスト入力の文字列で判定する)。
 #
 # 発火条件:
 #   - Write / Edit / MultiEdit: file_path (相対なら cwd 基準) が `.claude/` 配下
@@ -21,17 +21,17 @@
 #
 # 通過条件:
 #   - 最後の依頼者のテキスト入力 (ツール結果行・hook のフィードバック行・ローカルコマンドの
-#     記録を除く) に承認トークンがある。トークン 1 通で、次の依頼者の入力までの複数の
+#     記録を除く) に承認の文字列がある。トークン 1 通で、次の依頼者の入力までの複数の
 #     書き換えが通る
 #
 # 限界:
 #   - Bash は文字列の形で判定する。`.claude/` を書かずに触れる形 (cd 後の相対パス、
 #     変数展開、`git checkout -- .`) は止まらない
-#   - アシスタント側からのトークンの提案・要求は禁止 (rules「start-approval」)
+#   - アシスタント側からの承認の文字列の提案・要求は禁止 (rules「start-approval」)
 #
 # 設定 (.claude/harness.json):
 #   harnessChange.enabled           false で無効化 (既定 true。設定が無くても動く)
-#   harnessChange.token             承認トークン (既定 [harness-go])
+#   harnessChange.token             承認の文字列 (既定 [harness-go])
 #   harnessChange.excludePatterns[] パスに含めば対象外にする文字列 (既定 .claude/projects/)
 
 set -euo pipefail
@@ -125,7 +125,7 @@ if [[ -n "$transcript" && -f "$transcript" ]]; then
   last_user_msg=$(harness_last_user_entry "$transcript" 2000 | jq -r '.text // empty' 2>/dev/null || true)
 fi
 
-# 3) 承認トークン判定
+# 3) 承認の文字列判定
 if printf '%s' "$last_user_msg" | grep -qF -- "$go_token"; then
   exit 0
 fi
@@ -143,6 +143,6 @@ cat >&2 <<MSG
 3. その直後に書き換える (次の${principal}の入力までは複数の書き換えが通る)
 
 除外パス (${exclude_hint}) と読み取り (cat / grep / sed -n / jq) は対象外です。
-アシスタント側からのトークンの提案・要求は禁止 (rules「start-approval」)。
+アシスタント側からの承認の文字列の提案・要求は禁止 (rules「start-approval」)。
 MSG
 exit 2

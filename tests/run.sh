@@ -332,7 +332,7 @@ fi
 check "RQ-1c 検知ログに session / input のタグ" 1 "$(grep -c '\[session:.*\] \[input:.*\]' "$LOG" 2>/dev/null || echo 0)"
 
 run "RQ-2 検知語なし -> pass" 0 response-quality.sh "$CFG" "$IN/rq-pass.json"
-run "RQ-3 bypass トークン -> pass" 0 response-quality.sh "$CFG" "$IN/rq-bypass.json"
+run "RQ-3 bypass の文字列 -> pass" 0 response-quality.sh "$CFG" "$IN/rq-bypass.json"
 check "RQ-3a 検知ログは RQ-2/3 で増えない" 1 "$(grep -c . "$LOG")"
 run "RQ-4 再生成で uuid が取れない -> pass" 0 response-quality.sh "$CFG" "$IN/rq-active.json"
 run "RQ-4a 空白入り JSON の user 行を区切りに使う -> pass" 0 response-quality.sh "$CFG" "$IN/rq-spaced.json"
@@ -416,7 +416,7 @@ echo "== harness-change-check =="
 run "HG-1 .claude/rules/ を Write (GO なし) -> block" 2 harness-change-check.sh "$CFG" "$IN/hg-write.json" "[harness-go]"
 run "HG-2 Bash のリダイレクト先が .claude/ -> block" 2 harness-change-check.sh "$CFG" "$IN/hg-bash.json" "[harness-go]"
 run "HG-3 .claude/ からのコピー (読み取り) -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-read.json"
-run "HG-4 承認トークンあり -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-go.json"
+run "HG-4 承認の文字列あり -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-go.json"
 run "HG-5 除外パス (.claude/projects/) -> pass" 0 harness-change-check.sh "$CFG" "$IN/hg-proj.json"
 run "HG-6 enabled:false -> pass" 0 harness-change-check.sh "$PROJ/.claude/harness-hgoff.json" "$IN/hg-write.json"
 

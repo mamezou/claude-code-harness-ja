@@ -56,12 +56,12 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 |---|---|---|---|
 | `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表のセルが文で終わる、指示語の多用、結論をぼかす締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
 | `cloud-change-check.sh` | PreToolUse(Bash) | az / aws / cdk の変更系コマンドで、手順書の Read と `[change-go: <案件>]` のいずれかが無い | `[hook-bypass: cloud-change]` |
-| `harness-change-check.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(トークンが承認を兼ねる) |
+| `harness-change-check.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(承認の文字列がバイパスを兼ねる) |
 | `draft-precheck.sh` | PreToolUse(Write / Edit) | 送付文面に内部パス・ローカル拡張子・組版記号・外部 AI 言及・禁止語・長い識別子の繰り返し | `[hook-bypass: draft-precheck]` |
 | `require-reading.sh` | PreToolUse(Write / Edit) | 必読資料を直近で Read せずに対象ファイルを編集 | `[hook-bypass: resource-reading]` |
 | `no-inline-powershell.sh` | Stop | 5行以上の PowerShell をファイル化せずにコードブロックで提示 | なし |
 
-バイパストークンは利用者が自分のメッセージに書く運用です。Claude 側からの提案・要求は
+バイパスの文字列は利用者が自分のメッセージに書く運用です。Claude 側からの提案・要求は
 rules テンプレートで禁止しています。
 
 応答の文体検査は、差し戻し後の再生成(`stop_hook_active=true`)も検査します。同じ依頼者入力
@@ -85,7 +85,7 @@ rules テンプレートで禁止しています。
 | `responseQuality.regenLimitPerInput` | 同じ依頼者入力への差し戻しの上限回数(既定3) |
 | `responseQuality.regenSkipWindowSec` / `regenSkipThreshold` | 再生成ループ防止の窓と閾値。窓内に差し戻した他の入力の数で判定 |
 | `cloudChange.projects[]` | クラウド変更コマンドの停止の対象。`clis`(az / aws / cdk)、`cwdMatch`、`runbookPattern`、`runbookHint`、`guideRef` |
-| `harnessChange.token` / `excludePatterns[]` | ハーネス自体の変更の停止の承認トークン(既定 `[harness-go]`)と除外パス(既定 `.claude/projects/`) |
+| `harnessChange.token` / `excludePatterns[]` | ハーネス自体の変更の停止の承認の文字列(既定 `[harness-go]`)と除外パス(既定 `.claude/projects/`) |
 | `draftPrecheck.targets[]` | 送付文面の置き場(bash の case パターン)。`excludePatterns[]`、`bannedTerms[]`、`honorific` |
 | `requireReading.rules[]` | 編集対象(`target`)と必読資料(`requiredReadPattern`)の対応表。`mode: "logs"` で作業ログの特例 |
 | `noInlinePowershell.scriptDirHint` | ファイル化先の案内文 |
