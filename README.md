@@ -54,7 +54,7 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 
 | hook | イベント | 止める条件 | バイパス |
 |---|---|---|---|
-| `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表・箇条書きが文で終わる、指示語の多用、結論をぼかす締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
+| `response-quality.sh` | Stop | 応答本文に19種の文体違反(装飾語で締める、見出し・表のセルが文で終わる、指示語の多用、結論をぼかす締め、確認質問への根拠なしの否定断定 等) | `[hook-bypass: response-quality]` |
 | `cloud-change-check.sh` | PreToolUse(Bash) | az / aws / cdk の変更系コマンドで、手順書の Read と `[change-go: <案件>]` のいずれかが無い | `[hook-bypass: cloud-change]` |
 | `harness-change-check.sh` | PreToolUse(Bash / Write / Edit) | `.claude/` 配下(hooks / rules / skills / settings 等)の書き換えで、`[harness-go]` が無い | なし(トークンが承認を兼ねる) |
 | `draft-precheck.sh` | PreToolUse(Write / Edit) | 送付文面に内部パス・ローカル拡張子・組版記号・外部 AI 言及・禁止語・長い識別子の繰り返し | `[hook-bypass: draft-precheck]` |
