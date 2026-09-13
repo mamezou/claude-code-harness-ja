@@ -1,5 +1,9 @@
 # claude-code-harness-ja
 
+> 2026-09-13 に `mamezou/mamezou-plugins` へ統合しました。導入は Claude Code で
+> `/plugin marketplace add mamezou/mamezou-plugins` → `/plugin install harness-ja@mamezou-plugins`。
+> 本リポジトリは archive にし、更新しません。
+
 クラウド変更コマンドの停止と、設定・規則ファイルの保護を中心に、応答の文体検査を任意で
 加える Claude Code プラグインです。hook が実行前・応答終了時に検査し、条件を満たさない
 操作と応答を止めます。日本語で応答するプロジェクト向けで、案件固有の値は利用側の
