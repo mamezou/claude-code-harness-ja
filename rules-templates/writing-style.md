@@ -32,11 +32,10 @@ grep では検知できないため、300字を超える文書(送付文面・�
 Write 確定前に、読み取り専用のレビューエージェント(sonnet)へ「各文の主語と述語を
 抜き出し、対応しない文を列挙する」依頼を出し、返った指摘を本体が現物で確かめて
 直す。短くするときは文を分け、主語・目的語を削って短くしない。段落は「読み手が
-この段落を読んで次に何をするか」で組む。直した文の例は harness-ja
-`examples/sentence-fixes.md`。
+この段落を読んで次に何をするか」で組む。
 
 ## 送付文面
 
-送付文面の禁止項目・型は external-deliverables.md(ドラフト等の編集時に自動
-読み込み)と send-draft Skill に従う。送付前チェックは draft-precheck Skill を
-必ず通す。
+送付文面(ドラフト・Notion・exports 配下)の禁止項目(内部パス・ローカル拡張子・
+組版記号・外部 AI 言及・禁止語)は draft-precheck hook が編集時に検査する。案件の
+禁止語は `.claude/harness.json` の `draftPrecheck.bannedTerms[]` に置く。

@@ -7,7 +7,7 @@ keep-coding-instructions: true
 # Concise JA 応答スタイル
 
 対象は依頼者への返信・チャット文面。送付文面(ドラフト・Notion・exports配下)は
-`.claude/rules/writing-style.md` と external-deliverables.md に従う。出典は文化庁
+`.claude/rules/writing-style.md` に従う。出典は文化庁
 「公用文作成の考え方」と指摘の記録。
 
 ## 簡潔さ
@@ -36,7 +36,7 @@ keep-coding-instructions: true
 - 修飾語(「明らかな」「実質的に」等)を削る。比喩(「本丸」「肝」等)を使わない
 - 係る語と受ける語は近くに置く。体言止めを連続させない
 - 短くするときは文を分ける。主語・目的語を削って短くしない。書いた文は主語と述語だけを
-  抜き出して読み、対応しない文を直す(適用例は harness-ja `examples/sentence-fixes.md`)
+  抜き出して読み、対応しない文を直す
 - 英数字と日本語の間に半角スペースを入れない(「フェーズ1」)。英語複合名の
   内部スペースは保持する
 

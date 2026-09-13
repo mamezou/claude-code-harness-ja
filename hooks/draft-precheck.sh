@@ -173,6 +173,6 @@ ${file_path} に以下を検出しました:
 ${hits}
 修正してから再試行してください。
 緊急時は [hook-bypass: draft-precheck] でバイパス可能です。
-詳細: rules「external-deliverables」「writing-style」
+詳細: rules「writing-style」
 MSG
 exit 2

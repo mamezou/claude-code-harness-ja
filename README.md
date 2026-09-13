@@ -24,18 +24,14 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 |---|---|
 | hooks(5本) | 応答品質ゲート、クラウド変更コマンドのゲート、送付文面の事前検査、資料先読みの強制、インライン PowerShell の禁止 |
 | Output Style | `Concise JA`。簡潔な日本語応答と、依頼者への返信文体の規則 |
-| rules テンプレート(4本) | 着手と承認、サブエージェント委任、送付文面、外部送付物のチェック |
-| Skills(6本) | `harness-init`(初期設定)、`harness-review`(週次レビュー)、`draft-precheck`、`send-draft`、`work-log`、`codex-review` |
+| rules テンプレート(2本) | 着手と承認、文章の書き方 |
+| Skills(2本) | `harness-init`(初期設定)、`harness-review`(週次レビュー) |
 | docs テンプレート(2本) | 失敗の台帳 `lessons.md` と索引 `lessons-index.md` |
 | tests | hook 5本の合成入力テスト。`bash tests/run.sh` |
-| agents(3本) | `repo-survey`、`doc-review`、`draft-check`(いずれも読み取り専用、低コストモデル指定) |
-| git-hooks(2本) | 承認済み一覧と一致するコミットのみ許可、gitleaks によるシークレット検査 |
 
 ## 動作環境
 
 - Linux(bash、GNU coreutils、`jq`)。macOS は未検証
-- gitleaks は任意(無ければ警告して通す)
-- Codex CLI は `codex-review` Skill を使う場合のみ
 
 ## インストール
 
@@ -50,7 +46,7 @@ Claude Code の hook で、日本語の応答品質とクラウド運用のガ�
 /harness-init
 ```
 
-`.claude/harness.json` の作成、rules テンプレートと lessons 台帳の複製、git-hooks の配置、
+`.claude/harness.json` の作成、rules テンプレートと lessons 台帳の複製、
 `.gitignore` の追記を行います。作成された `harness.json` を案件に合わせて書き換えてください。Output Style は
 `/config` から「Concise JA」を選びます。
 
@@ -95,15 +91,12 @@ hook 実行時の cwd から上へ辿った `.claude/harness.json` の順で探�
 プラグインは `.claude/rules/` 相当の常時ロード指示を配布できないため、`rules-templates/` を
 `/harness-init` で利用側へ複製します。複製後は利用側で自由に編集してください。
 
-文章の規則のうち、次の3つは grep や hook で検知できないため、`draft-precheck` Skill の
-工程で読み取り専用のレビューエージェントに主語と述語の抜き出しを委任して確かめます。
+文章の規則のうち、次の3つは grep や hook で検知できないため、`writing-style.md` の
+手順で読み取り専用のレビューエージェントに主語と述語の抜き出しを委任して確かめます。
 
 - 文は主語と述語だけを抜き出して読み、対応しない文を直す
 - 短くするときは文を分ける。主語・目的語を削って短くしない
 - 段落は「読み手がこの段落を読んで次に何をするか」で組む
-
-実際に直した文の凡例は [`examples/sentence-fixes.md`](examples/sentence-fixes.md)
-(変更前 → 変更後 → 該当する規則)。
 
 ## 週次レビュー `/harness-review`
 
@@ -137,13 +130,6 @@ bash tests/run.sh
 
 hook 5本に合成の transcript と入力 JSON を与え、差し戻し(exit 2)と通過(exit 0)、バイパス、
 設定なし、再生成ループ防止、検知ログの UTF-8 を確認します。hook や辞書を変えたら実行してください。
-
-## git-hooks
-
-`prepare-commit-msg` は、`.claude/commit-plan.txt` に書かれた承認済みのファイル一覧と
-ステージ内容が完全一致するときだけコミットを許可します(`--no-verify` でも動きます)。
-続けて `pre-commit-checks.sh` が gitleaks でシークレットを検査し、送付文面の対象ファイルには
-`draft-precheck.sh` を適用します。
 
 ## ライセンス
 
