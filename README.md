@@ -1,7 +1,7 @@
 # claude-code-harness-ja
 
-> 2026-09-13 に `mamezou/mamezou-plugins` へ統合しました。導入は Claude Code で
-> `/plugin marketplace add mamezou/mamezou-plugins` → `/plugin install harness-ja@mamezou-plugins`。
+> 2026-09-13 に `mamezou/mamezou-claude-plugins` へ統合しました。導入は Claude Code で
+> `/plugin marketplace add mamezou/mamezou-claude-plugins` → `/plugin install harness-ja@mamezou-claude-plugins`。
 > 本リポジトリは archive にし、更新しません。
 
 クラウド変更コマンドの停止と、設定・規則ファイルの保護を中心に、応答の文体検査を任意で
