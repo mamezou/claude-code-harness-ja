@@ -10,7 +10,7 @@
 # 出力 (Markdown): 期間と総件数 / 週別件数 / 種別ごとの件数と前期間比 /
 #   種別ごとの直近の検出例 / 検出語の頻度 / 常に読み込まれる指示の行数
 # ログの形式: <ISO時刻>\t[session:<id>] [input:<uuid>] <種別: [検出語] (根拠)>|<種別...>
-#   先頭に [regen-skip] または [regen-limit] が付く行は通過記録。タグの無い旧形式の行も読む
+#   先頭に [regen-limit] が付く行は差し戻し上限での通過記録。タグの無い旧形式の行も読む
 
 set -uo pipefail
 export LC_ALL=C.UTF-8
@@ -44,7 +44,7 @@ prev_since=$(( now - days*2*86400 ))
 norm=$(grep -av '^[[:space:]]*$' "$log" | awk -F'\t' '
   NF >= 2 {
     ts=$1; body=$2; skip=0
-    if (body ~ /^\[regen-(skip|limit)\] /) { skip=1; sub(/^\[regen-(skip|limit)\] /, "", body) }
+    if (body ~ /^\[regen-limit\] /) { skip=1; sub(/^\[regen-limit\] /, "", body) }
     sub(/^\[session:[^]]*\] \[input:[^]]*\] /, "", body)
     cmd="date -d \"" ts "\" +%s 2>/dev/null"; cmd | getline ep; close(cmd)
     if (ep == "") ep=0
@@ -63,7 +63,7 @@ echo "# 検知ログの集計"
 echo
 echo "- ログ: \`$log\`"
 echo "- 期間: 直近 ${days} 日 ($(date -d @$since +%Y-%m-%d) 〜 $(date +%Y-%m-%d))"
-echo "- 件数: ${cur_n} 件 (前期間 ${prev_n} 件)。うち差し戻し上限・再生成ループ防止で通過した記録 ${cur_skip} 件"
+echo "- 件数: ${cur_n} 件 (前期間 ${prev_n} 件)。うち差し戻し上限に達して通過した記録 ${cur_skip} 件"
 echo
 
 echo "## 週別件数 (月曜起点)"

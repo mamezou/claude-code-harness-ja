@@ -3,13 +3,12 @@
   "principal": "依頼者",
   "responseQuality": {
     "enabled": true,
+    "patterns": [3, 4, 8, 19],
     "logPath": ".claude/harness-detections.log",
     "uiTerms": [],
     "fluffTerms": [],
     "bannedLeads": [],
-    "regenLimitPerInput": 3,
-    "regenSkipWindowSec": 1800,
-    "regenSkipThreshold": 2
+    "regenLimitPerInput": 3
   },
   "harnessChange": {
     "enabled": true,
@@ -45,6 +44,15 @@
       "*/docs/notion/*.md"
     ],
     "excludePatterns": ["-internal-", "_internal", "/archive/"],
+    "checks": {
+      "bannedTerms": true,
+      "internalPaths": true,
+      "extensions": true,
+      "typography": true,
+      "externalAi": true,
+      "honorific": true,
+      "longIdentifiers": true
+    },
     "bannedTerms": [],
     "honorific": {
       "name": "",
@@ -73,7 +81,7 @@
     ]
   },
   "noInlinePowershell": {
-    "enabled": true,
+    "enabled": false,
     "scriptDirHint": "scripts/{category}/*.ps1"
   }
 }

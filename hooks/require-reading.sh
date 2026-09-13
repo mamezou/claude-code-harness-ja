@@ -9,11 +9,12 @@
 #
 # 通過条件:
 #   - 通常: requiredReadPattern に一致する資料を直近 200 行の transcript で Read
-#   - mode="logs" の既存ファイル編集: そのファイル自身の Read
+#   - mode="logs" の既存ファイル編集: そのファイル自身の Read。判定は cwd 基準で
+#     正規化した絶対パスの一致で行う (同名の別ファイルの Read では通さない)
 #   - mode="logs" の新規作成: requiredReadPattern に一致する任意のファイルの Read
 #
 # バイパス:
-#   - 直前のユーザーメッセージに [hook-bypass: resource-reading]
+#   - 依頼者の最後のテキスト入力に [hook-bypass: resource-reading] がそれだけの行としてある
 #
 # 設定 (.claude/harness.json):
 #   requireReading.enabled  false で無効化
@@ -25,6 +26,7 @@ source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/config.sh"
 
 input=$(cat)
 harness_load_config "$input"
+harness_config_guard pre
 
 if ! cfg_enabled '.requireReading'; then
   exit 0
@@ -38,17 +40,25 @@ fi
 # 1) cwd 取得 (相対パス解決にのみ使用。cwd では発火制限しない)
 cwd=$(printf '%s' "$input" | jq -r '.cwd // empty')
 
+# パスを cwd 基準の絶対パスへ正規化する (`/./` と重複スラッシュ、末尾の `/` を畳む)
+# シンボリックリンクと `..` は解決しない (存在しないファイルも扱うため)
+normalize_path() {
+  local p="$1"
+  case "$p" in
+    /*) : ;;
+    "~/"*) p="${HOME}/${p#\~/}" ;;
+    *) p="${cwd:-$PWD}/$p" ;;
+  esac
+  printf '%s' "$p" | sed -E 's#/\./#/#g; s#/+#/#g; s#(.)/$#\1#'
+}
+
 # 2) 編集対象ファイルパス抽出
 file_path=$(printf '%s' "$input" | jq -r '.tool_input.file_path // .tool_input.path // empty')
 if [[ -z "$file_path" ]]; then
   exit 0
 fi
 
-if [[ "$file_path" = /* ]]; then
-  target_file_path="$file_path"
-else
-  target_file_path="${cwd%/}/$file_path"
-fi
+target_file_path=$(normalize_path "$file_path")
 
 # 3) クリティカル判定 (target_file_path で cwd 非依存に判定)
 related_pattern=""
@@ -85,27 +95,28 @@ MSG
   exit 2
 fi
 
-# 5) バイパス判定
-last_user_msg=$(harness_last_user_text "$transcript")
-
-if printf '%s' "$last_user_msg" | grep -q '\[hook-bypass: resource-reading\]'; then
+# 5) バイパス判定 (それだけの行にある場合のみ有効)
+last_user_msg=$(harness_last_user_message "$transcript")
+if harness_has_token "$last_user_msg" '[hook-bypass: resource-reading]'; then
   exit 0
 fi
 
 # 6) Read 済みファイル一覧 (直近 200 行)
 read_files=$(tail -200 "$transcript" \
-  | jq -r 'select(.type=="assistant") | .message.content[]? | select(.type=="tool_use" and .name=="Read") | .input.file_path // .input.path // empty' 2>/dev/null || true)
+  | jq -rR -n '[inputs | fromjson? // empty] | .[]
+      | select(.type=="assistant") | .message.content[]?
+      | select(.type=="tool_use" and .name=="Read")
+      | .input.file_path // .input.path // empty' 2>/dev/null || true)
 
 # 7) logs 特例 (既存編集 vs 新規作成で分岐)
 if [[ "$is_logs" -eq 1 ]]; then
   if [[ -f "$target_file_path" ]]; then
-    # 既存ファイル編集: 対象ファイル自身の Read が必要
-    file_basename=$(basename "$target_file_path")
+    # 既存ファイル編集: 対象ファイル自身の Read が必要 (絶対パスの一致で判定する。
+    # ファイル名だけの一致では、同名の別ファイルを読んだだけで通ってしまう)
     self_read=""
     while IFS= read -r read_path; do
       [[ -z "$read_path" ]] && continue
-      read_basename=$(basename "$read_path")
-      if [[ "$read_basename" == "$file_basename" ]]; then
+      if [[ "$(normalize_path "$read_path")" == "$target_file_path" ]]; then
         self_read="$read_path"
         break
       fi
@@ -121,7 +132,7 @@ if [[ "$is_logs" -eq 1 ]]; then
 このファイル自身を直近で Read していません。
 
 追記前にファイル内容を確認してください。
-緊急時のみ [hook-bypass: resource-reading] を含めて回避可能です。
+緊急時のみ [hook-bypass: resource-reading] だけの行で回避できます。
 MSG
     exit 2
   else
@@ -137,7 +148,7 @@ MSG
 直近で ${target_name} 配下の既存ログを Read していません。
 
 前回までの作業記録を確認してから新規ログを作成してください。
-緊急時のみ [hook-bypass: resource-reading] を含めて回避可能です。
+緊急時のみ [hook-bypass: resource-reading] だけの行で回避できます。
 MSG
     exit 2
   fi
@@ -158,7 +169,7 @@ ${file_path} を編集しようとしていますが、
 - 最初に「読むべき資料リスト」を提示 → ユーザー確認 → 編集/提示
 
 対象資料を Read してから再度編集を試みてください。
-緊急時のみ [hook-bypass: resource-reading] を含めて回避可能です。
+緊急時のみ [hook-bypass: resource-reading] だけの行で回避できます。
 MSG
   exit 2
 fi

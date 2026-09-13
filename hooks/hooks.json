@@ -1,5 +1,5 @@
 {
-  "description": "harness-ja: 応答の文体検査 (Stop)、クラウド変更コマンドの停止とハーネス自体の変更の停止 (PreToolUse Bash)、送付文面の事前検査・必読資料の先読みの強制・ハーネス自体の変更の停止 (PreToolUse Write|Edit|MultiEdit)",
+  "description": "harness-ja: 応答の文体検査 (Stop)、クラウド変更コマンドの停止と設定・規則ファイルの保護 (PreToolUse Bash)、送付文面の事前検査・必読資料の先読みの強制・設定・規則ファイルの保護 (PreToolUse Write|Edit|MultiEdit)",
   "hooks": {
     "PreToolUse": [
       {
